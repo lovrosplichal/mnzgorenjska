@@ -1,6 +1,8 @@
+// End-to-end preverjanje proti bazi: registracija, RLS, glasovanje o
+// asistencah in pozicijah, točkovanje iz zapisnikov in lestvica.
+//
+// Zahteva uvožene zapisnike (node scripts/uvoz-zapisnikov.mjs).
 import { createClient } from '@supabase/supabase-js'
-
-// Bere .env, sicer privzame lokalni Supabase stack.
 import { readFileSync } from 'node:fs'
 
 function izEnv() {
@@ -10,7 +12,7 @@ function izEnv() {
       vsebina
         .split(String.fromCharCode(10))
         .map((v) => v.trim())
-        .filter((v) => v.includes('=') && !v.trim().startsWith('#'))
+        .filter((v) => v.includes('=') && !v.startsWith('#'))
         .map((v) => {
           const i = v.indexOf('=')
           return [v.slice(0, i).trim(), v.slice(i + 1).trim()]
@@ -38,10 +40,23 @@ const ok = (label, cond, extra = '') => {
 }
 
 const stamp = process.argv[2] ?? Date.now().toString(36)
+const PRAG = 5
 
-// --- 1. registracija treh uporabnikov -------------------------------------
+// --- 0. predpogoji ---------------------------------------------------------
+const anon = fresh()
+const { count: stTekem } = await anon
+  .from('matches')
+  .select('id', { count: 'exact', head: true })
+if (!stTekem) {
+  console.error(
+    'V bazi ni tekem. Najprej poženi: node scripts/uvoz-zapisnikov.mjs --liga 1502',
+  )
+  process.exit(1)
+}
+
+// --- 1. registracija -------------------------------------------------------
 const users = []
-for (let n = 1; n <= 3; n++) {
+for (let n = 1; n <= PRAG; n++) {
   const c = fresh()
   const email = `test${n}.${stamp}@example.com`
   const { data, error } = await c.auth.signUp({
@@ -55,34 +70,212 @@ for (let n = 1; n <= 3; n++) {
   }
   users.push({ c, id: data.user.id, email })
 }
-ok('registracija 3 uporabnikov', users.length === 3)
+ok(`registracija ${PRAG} uporabnikov`, users.length === PRAG)
 
-// profil se je ustvaril prek trigerja
 const { data: profil } = await users[0].c
   .from('profiles')
-  .select('id, display_name')
+  .select('display_name')
   .eq('id', users[0].id)
   .maybeSingle()
-ok('trigger ustvari profil', profil?.display_name === 'Tester 1', profil?.display_name)
+ok('trigger ustvari profil', profil?.display_name === 'Tester 1')
 
-// --- 2. fantasy ekipa + nabor ---------------------------------------------
+// --- 2. javno branje -------------------------------------------------------
+const { data: javniIgralci } = await anon
+  .from('player_overview')
+  .select('id, full_name, value')
+  .limit(5)
+ok('anonimni vidi igralce', javniIgralci?.length === 5)
+
+const { data: javneTekme } = await anon.from('matches').select('id').limit(3)
+ok('anonimni vidi tekme', javneTekme?.length === 3)
+
+// --- 3. glasovanje o asistenci ---------------------------------------------
 const u = users[0]
+const { data: gol } = await u.c
+  .from('goals')
+  .select('id, match_id, team_id, scorer_id, assist_player_id')
+  .eq('is_own_goal', false)
+  .is('assist_player_id', null)
+  .limit(1)
+  .single()
+ok('najden gol brez asistence', Boolean(gol))
+
+const { data: soigralci } = await u.c
+  .from('appearances')
+  .select('player_id')
+  .eq('match_id', gol.match_id)
+  .eq('team_id', gol.team_id)
+  .neq('player_id', gol.scorer_id)
+  .gt('minutes_played', 0)
+  .limit(2)
+const podajalec = soigralci[0].player_id
+const drugi = soigralci[1].player_id
+
+// prvi glasovi (pod pragom)
+for (let n = 0; n < PRAG - 1; n++) {
+  const { error } = await users[n].c
+    .from('assist_votes')
+    .insert({ goal_id: gol.id, voter_id: users[n].id, player_id: podajalec })
+  if (error) ok(`glas ${n + 1}`, false, error.message)
+}
+const { data: podPragom } = await anon
+  .from('goals')
+  .select('assist_player_id')
+  .eq('id', gol.id)
+  .single()
+ok(
+  `pri ${PRAG - 1} glasovih asistenca še ni potrjena`,
+  podPragom.assist_player_id === null,
+)
+
+// zadnji glas doseže prag
+await users[PRAG - 1].c
+  .from('assist_votes')
+  .insert({ goal_id: gol.id, voter_id: users[PRAG - 1].id, player_id: podajalec })
+const { data: nadPragom } = await anon
+  .from('goals')
+  .select('assist_player_id, assist_confirmed_at')
+  .eq('id', gol.id)
+  .single()
+ok(
+  `pri ${PRAG} glasovih se asistenca potrdi`,
+  nadPragom.assist_player_id === podajalec,
+  `${nadPragom.assist_player_id}`,
+)
+
+// --- 4. RLS pri glasovanju --------------------------------------------------
+const { error: eTujGlas } = await users[1].c
+  .from('assist_votes')
+  .insert({ goal_id: gol.id, voter_id: users[0].id, player_id: drugi })
+ok('RLS: ne morem glasovati v tujem imenu', Boolean(eTujGlas), eTujGlas?.code)
+
+const { count: mojihGlasov } = await users[1].c
+  .from('assist_votes')
+  .select('id', { count: 'exact', head: true })
+  .eq('voter_id', users[1].id)
+ok('vsak uporabnik ima svoj glas', mojihGlasov === 1)
+
+// --- 5. asistenca prinese točke ---------------------------------------------
+const { data: nastopPodajalca } = await anon
+  .from('appearance_points')
+  .select('assists, points, position')
+  .eq('match_id', gol.match_id)
+  .eq('player_id', podajalec)
+  .single()
+ok(
+  'potrjena asistenca se pripiše nastopu',
+  nastopPodajalca.assists === 1,
+  `assists=${nastopPodajalca.assists}`,
+)
+
+// --- 6. glasovanje o poziciji ------------------------------------------------
+const { data: brezPozicije } = await u.c
+  .from('players')
+  .select('id, full_name')
+  .is('position', null)
+  .limit(1)
+  .single()
+ok('najden igralec brez pozicije', Boolean(brezPozicije))
+
+for (let n = 0; n < PRAG - 1; n++)
+  await users[n].c
+    .from('position_votes')
+    .insert({ player_id: brezPozicije.id, voter_id: users[n].id, position: 'MID' })
+const { data: pozPod } = await anon
+  .from('players')
+  .select('position')
+  .eq('id', brezPozicije.id)
+  .single()
+ok(`pri ${PRAG - 1} glasovih pozicija še ni potrjena`, pozPod.position === null)
+
+await users[PRAG - 1].c
+  .from('position_votes')
+  .insert({
+    player_id: brezPozicije.id,
+    voter_id: users[PRAG - 1].id,
+    position: 'MID',
+  })
+const { data: pozNad } = await anon
+  .from('players')
+  .select('position, position_source')
+  .eq('id', brezPozicije.id)
+  .single()
+ok(
+  `pri ${PRAG} glasovih se pozicija potrdi`,
+  pozNad.position === 'MID' && pozNad.position_source === 'glasovanje',
+  `${pozNad.position}/${pozNad.position_source}`,
+)
+
+// --- 7. vratar iz zapisnika ni odvisen od glasovanja ------------------------
+const { data: vratar } = await anon
+  .from('players')
+  .select('id, position, position_source')
+  .eq('position_source', 'zapisnik')
+  .limit(1)
+  .single()
+ok(
+  'vratarja določi zapisnik, ne glasovanje',
+  vratar?.position === 'GK',
+  `${vratar?.position}`,
+)
+
+// --- 8. točkovanje po pravilih -----------------------------------------------
+// 90 minut + brez prejetega gola za vratarja = 2 + 4 = 6
+const { data: vratarCS } = await anon
+  .from('appearance_points')
+  .select('points, minutes_played, clean_sheet, goals, assists, goals_conceded')
+  .eq('position', 'GK')
+  .eq('clean_sheet', true)
+  .eq('minutes_played', 90)
+  .eq('goals', 0)
+  .eq('assists', 0)
+  .limit(1)
+  .single()
+ok(
+  'vratar 90 min brez prejetega gola = 6 točk',
+  Number(vratarCS?.points) === 6,
+  `${vratarCS?.points}`,
+)
+
+// prejeti goli: -1 za vsaka 2
+const { data: vratarPrejeti } = await anon
+  .from('appearance_points')
+  .select('points, minutes_played, goals_conceded, goals, assists')
+  .eq('position', 'GK')
+  .eq('minutes_played', 90)
+  .eq('clean_sheet', false)
+  .eq('goals', 0)
+  .eq('assists', 0)
+  .gte('goals_conceded', 2)
+  .limit(1)
+  .single()
+if (vratarPrejeti) {
+  const pricakovano = 2 - Math.floor(vratarPrejeti.goals_conceded / 2)
+  ok(
+    'vratar: -1 za vsaka 2 prejeta gola',
+    Number(vratarPrejeti.points) === pricakovano,
+    `prejetih ${vratarPrejeti.goals_conceded} -> ${vratarPrejeti.points}, pričakovano ${pricakovano}`,
+  )
+}
+
+// --- 9. fantasy ekipa in proračun --------------------------------------------
 const { data: ekipa, error: eEkipa } = await u.c
   .from('fantasy_teams')
   .insert({ owner_id: u.id, name: `Ekipa ${stamp}` })
-  .select('id')
+  .select('id, budget')
   .single()
 ok('ustvari fantasy ekipo', !eEkipa, eEkipa?.message)
+ok('ekipa ima privzet proračun', Number(ekipa?.budget) === 100)
 
-const { data: igralci } = await u.c
-  .from('players')
-  .select('id, position, team_id')
-  .limit(60)
+const { data: poceni } = await u.c
+  .from('player_overview')
+  .select('id, value, team_id')
+  .order('value')
+  .limit(40)
 
-// 11 prvih + 4 na klopi, največ 3 iz kluba
 const izbrani = []
 const naKlub = {}
-for (const p of igralci) {
+for (const p of poceni) {
   if (izbrani.length >= 15) break
   if ((naKlub[p.team_id] ?? 0) >= 3) continue
   naKlub[p.team_id] = (naKlub[p.team_id] ?? 0) + 1
@@ -95,13 +288,23 @@ for (const p of igralci) {
 const { error: eNabor } = await u.c.from('fantasy_roster').insert(izbrani)
 ok('shrani nabor 15 igralcev', !eNabor, eNabor?.message)
 
-// --- 3. RLS: tuj uporabnik ne sme urejati moje ekipe -----------------------
-const { error: eTuj } = await users[1].c
+const { data: proracun } = await u.c
+  .from('fantasy_team_budget')
+  .select('spent, remaining, budget')
+  .eq('fantasy_team_id', ekipa.id)
+  .single()
+ok(
+  'proračun se sešteje',
+  Math.abs(Number(proracun.budget) - Number(proracun.spent) - Number(proracun.remaining)) < 0.01,
+  `${proracun.spent} porabljeno, ${proracun.remaining} ostane`,
+)
+
+// --- 10. RLS na ekipi ---------------------------------------------------------
+await users[1].c
   .from('fantasy_teams')
   .update({ name: 'ugrabljeno' })
   .eq('id', ekipa.id)
-  .select()
-const { data: poNapadu } = await u.c
+const { data: poNapadu } = await anon
   .from('fantasy_teams')
   .select('name')
   .eq('id', ekipa.id)
@@ -112,150 +315,42 @@ ok(
   poNapadu.name,
 )
 
-// --- 4. glasovanje ---------------------------------------------------------
-const { data: krogi } = await u.c
-  .from('rounds')
-  .select('id, number, voting_opens_at, voting_closes_at')
-  .order('number')
-const odprt = krogi.find((k) => {
-  const z = Date.now()
-  return z >= Date.parse(k.voting_opens_at) && z <= Date.parse(k.voting_closes_at)
-})
-const zaprt = krogi.find((k) => Date.parse(k.voting_closes_at) < Date.now())
-ok('obstaja odprt krog', Boolean(odprt), odprt && `krog ${odprt.number}`)
+// --- 11. lestvica ---------------------------------------------------------------
+const { data: krog } = await anon.from('rounds').select('id').limit(1).single()
+await u.c.rpc('recompute_round_scores', { p_round_id: krog.id })
 
-const ocenjeni = izbrani.slice(0, 11).map((s) => s.player_id)
-const ocene = [7, 8, 6] // po en glasovalec
-
-for (let n = 0; n < 3; n++) {
-  const { error } = await users[n].c.from('ratings').insert(
-    ocenjeni.map((pid) => ({
-      round_id: odprt.id,
-      player_id: pid,
-      voter_id: users[n].id,
-      rating: ocene[n],
-    })),
-  )
-  ok(`uporabnik ${n + 1} odda ocene`, !error, error?.message)
-}
-
-// zaprt krog mora zavrniti glas
-const { error: eZaprt } = await u.c.from('ratings').insert({
-  round_id: zaprt.id,
-  player_id: ocenjeni[0],
-  voter_id: u.id,
-  rating: 9,
-})
-ok('RLS: glas v zaprtem krogu zavrnjen', Boolean(eZaprt), eZaprt?.code)
-
-// tuji glasovi niso vidni
-const { data: tujiGlasovi } = await users[1].c
-  .from('ratings')
-  .select('id, voter_id')
-  .eq('round_id', odprt.id)
-ok(
-  'RLS: vidim le svoje ocene',
-  tujiGlasovi.every((g) => g.voter_id === users[1].id),
-  `${tujiGlasovi.length} vrstic`,
-)
-
-// --- 5. preračun točk ------------------------------------------------------
-const { error: eRpc } = await u.c.rpc('recompute_round_scores', {
-  p_round_id: odprt.id,
-})
-ok('recompute_round_scores', !eRpc, eRpc?.message)
-
-// Baza lahko že vsebuje demo podatke drugih glasovalcev, zato ne preverjamo
-// absolutnih vrednosti, ampak razmerja — ta držijo ne glede na ostale glasove.
-const { data: scores } = await u.c
-  .from('player_scores')
-  .select('player_id, avg_rating, votes_count, points')
-  .eq('round_id', odprt.id)
-  .in('player_id', ocenjeni)
-
-ok(
-  'točke izračunane za vseh 11 ocenjenih igralcev',
-  scores.length === ocenjeni.length,
-  `${scores.length}/${ocenjeni.length}`,
-)
-ok(
-  'vsak rezultat upošteva vsaj naše 3 glasove',
-  scores.every((s) => s.votes_count >= 3),
-  scores[0] && `votes=${scores[0].votes_count}`,
-)
-ok(
-  'povprečje je v razponu 1–10 in enako točkam',
-  scores.every(
-    (s) =>
-      Number(s.avg_rating) >= 1 &&
-      Number(s.avg_rating) <= 10 &&
-      Number(s.points) === Number(s.avg_rating),
-  ),
-  scores[0] && `avg=${scores[0].avg_rating} points=${scores[0].points}`,
-)
-
-// --- 6. lestvica -----------------------------------------------------------
-// Lestvica mora biti vsota točk igralcev v prvi postavi.
 const prviIgralci = izbrani.filter((s) => s.is_starter).map((s) => s.player_id)
-const { data: vseTocke } = await u.c
+const { data: tocke } = await u.c
   .from('player_scores')
-  .select('player_id, points')
+  .select('points')
   .in('player_id', prviIgralci)
+const pricakovanaVsota = (tocke ?? []).reduce((v, s) => v + Number(s.points), 0)
 
-const pricakovanaVsota = vseTocke.reduce((v, s) => v + Number(s.points), 0)
-
-const { data: lestvica } = await u.c
+const { data: lestvica } = await anon
   .from('fantasy_team_standings')
-  .select('team_name, total_points')
+  .select('team_name, owner_name, total_points')
   .order('total_points', { ascending: false })
 const moja = lestvica.find((l) => l.team_name === `Ekipa ${stamp}`)
-
 ok(
   'lestvica sešteje točke prve postave',
   Math.abs(Number(moja?.total_points) - pricakovanaVsota) < 0.01,
   `${moja?.total_points} (pričakovano ${pricakovanaVsota.toFixed(2)})`,
 )
-// Rezerve morajo biti izključene: vsota vseh 15 je večja od vsote prve postave.
-const { data: tockeVseh } = await u.c
-  .from('player_scores')
-  .select('player_id, points')
-  .in('player_id', izbrani.map((s) => s.player_id))
-const vsotaVseh = tockeVseh.reduce((v, s) => v + Number(s.points), 0)
+ok('lestvica pokaže lastnika', moja?.owner_name === 'Tester 1', moja?.owner_name)
 
-ok(
-  'rezerve ne prinašajo točk',
-  vsotaVseh > pricakovanaVsota &&
-    Math.abs(Number(moja?.total_points) - pricakovanaVsota) < 0.01,
-  `prva postava ${pricakovanaVsota.toFixed(2)} < vseh 15: ${vsotaVseh.toFixed(2)}`,
-)
-
-// --- 7. anonimni obiskovalec -----------------------------------------------
-const anon = fresh()
-const { data: javniIgralci } = await anon.from('players').select('id').limit(5)
-const { data: javnaLestvica } = await anon
-  .from('fantasy_team_standings')
-  .select('team_name')
-const { data: anonOcene } = await anon.from('ratings').select('id')
-ok('anonimni vidi igralce', javniIgralci?.length === 5)
-ok('anonimni vidi lestvico', javnaLestvica?.length > 0)
-ok('anonimni ne vidi ocen', (anonOcene ?? []).length === 0)
-
-// --- 8. pospravljanje ------------------------------------------------------
-// Testna ekipa se pobriše, da ne umaže lestvice. Testni uporabniki v auth.users
-// ostanejo (brisanje zahteva service_role); pobrišeš jih z:
-//   node scripts/demo-data.mjs   ali   npm run db:reset
+// --- 12. pospravljanje ------------------------------------------------------------
 await u.c.from('fantasy_roster').delete().eq('fantasy_team_id', ekipa.id)
-const { error: eCist } = await u.c
-  .from('fantasy_teams')
-  .delete()
-  .eq('id', ekipa.id)
+await u.c.from('fantasy_teams').delete().eq('id', ekipa.id)
+for (const usr of users) {
+  await usr.c.from('assist_votes').delete().eq('voter_id', usr.id)
+  await usr.c.from('position_votes').delete().eq('voter_id', usr.id)
+}
 const { data: poCiscenju } = await anon
   .from('fantasy_team_standings')
   .select('team_name')
 ok(
-  'testna ekipa je pospravljena',
-  !eCist && !poCiscenju.some((l) => l.team_name === `Ekipa ${stamp}`),
-  eCist?.message,
+  'testni podatki so pospravljeni',
+  !poCiscenju.some((l) => l.team_name === `Ekipa ${stamp}`),
 )
 
 console.log(`\n${fails === 0 ? 'VSE OK' : fails + ' NAPAK'}`)

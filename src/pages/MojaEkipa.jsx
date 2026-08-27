@@ -5,21 +5,29 @@ import {
   VELIKOST_EKIPE,
   STEVILO_PRVIH,
   MAX_IZ_KLUBA,
+  PRORACUN,
   POZICIJE,
-  IME_POZICIJE,
   preveriEkipo,
 } from '../lib/pravila'
+import {
+  prikazniIme,
+  razredPozicije,
+  KRATKA_POZICIJA,
+  formatirajTocke,
+} from '../lib/pomozno'
 
 export default function MojaEkipa() {
   const { session, loading } = useAuth()
   const [ekipa, setEkipa] = useState(null)
   const [imeEkipe, setImeEkipe] = useState('')
   const [igralci, setIgralci] = useState([])
-  const [izbrani, setIzbrani] = useState([]) // [{ player_id, is_starter }]
+  const [izbrani, setIzbrani] = useState([])
   const [nalaganje, setNalaganje] = useState(true)
   const [sporocilo, setSporocilo] = useState(null)
   const [napaka, setNapaka] = useState(null)
   const [filterKlub, setFilterKlub] = useState('vsi')
+  const [filterPoz, setFilterPoz] = useState('vse')
+  const [iskanje, setIskanje] = useState('')
 
   useEffect(() => {
     if (loading) return
@@ -29,31 +37,32 @@ export default function MojaEkipa() {
     }
 
     async function nalozi() {
-      const { data: vsiIgralci, error: e1 } = await supabase
-        .from('players')
-        .select('id, first_name, last_name, position, team_id, teams(name, short_name)')
-        .eq('active', true)
-        .order('last_name')
-      if (e1) {
-        setNapaka(e1.message)
+      const { data: vsi, error } = await supabase
+        .from('player_overview')
+        .select(
+          'id, full_name, position, team_id, team_name, team_short, value, points, goals, minutes',
+        )
+        .order('value', { ascending: false })
+      if (error) {
+        setNapaka(error.message)
         setNalaganje(false)
         return
       }
-      setIgralci(vsiIgralci ?? [])
+      setIgralci(vsi ?? [])
 
-      const { data: mojaEkipa } = await supabase
+      const { data: moja } = await supabase
         .from('fantasy_teams')
-        .select('id, name')
+        .select('id, name, budget')
         .eq('owner_id', session.user.id)
         .maybeSingle()
 
-      if (mojaEkipa) {
-        setEkipa(mojaEkipa)
-        setImeEkipe(mojaEkipa.name)
+      if (moja) {
+        setEkipa(moja)
+        setImeEkipe(moja.name)
         const { data: nabor } = await supabase
           .from('fantasy_roster')
           .select('player_id, is_starter')
-          .eq('fantasy_team_id', mojaEkipa.id)
+          .eq('fantasy_team_id', moja.id)
         setIzbrani(nabor ?? [])
       }
       setNalaganje(false)
@@ -74,34 +83,40 @@ export default function MojaEkipa() {
     [izbrani, poId],
   )
 
-  const napakeEkipe = preveriEkipo(izbraniPodrobno)
+  const proracun = ekipa?.budget ?? PRORACUN
+  const porabljeno = izbraniPodrobno.reduce((v, s) => v + Number(s.value ?? 0), 0)
+  const preostalo = proracun - porabljeno
+  const napakeEkipe = preveriEkipo(izbraniPodrobno, proracun)
 
   const klubi = useMemo(() => {
     const m = new Map()
-    for (const i of igralci) if (i.teams) m.set(i.team_id, i.teams.name)
+    for (const i of igralci) if (i.team_name) m.set(i.team_id, i.team_name)
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'sl'))
   }, [igralci])
 
   function preklopi(igralec) {
     setSporocilo(null)
-    const obstaja = izbrani.find((s) => s.player_id === igralec.id)
-    if (obstaja) {
+    if (izbrani.find((s) => s.player_id === igralec.id)) {
       setIzbrani(izbrani.filter((s) => s.player_id !== igralec.id))
       return
     }
-    if (izbrani.length >= VELIKOST_EKIPE) {
-      setSporocilo('Ekipa je polna (' + VELIKOST_EKIPE + ' igralcev).')
-      return
-    }
+    if (izbrani.length >= VELIKOST_EKIPE)
+      return setSporocilo(`Ekipa je polna (${VELIKOST_EKIPE} igralcev).`)
+
+    const cena = Number(igralec.value ?? 0)
+    if (cena > preostalo)
+      return setSporocilo(
+        `Premalo proračuna — ${igralec.full_name} stane ${formatirajTocke(cena)}, na voljo imaš ${formatirajTocke(preostalo)}.`,
+      )
+
     const izKluba = izbraniPodrobno.filter(
       (s) => s.team_id === igralec.team_id,
     ).length
-    if (izKluba >= MAX_IZ_KLUBA) {
-      setSporocilo(
-        'Iz kluba ' + igralec.teams?.name + ' imaš že ' + MAX_IZ_KLUBA + ' igralce.',
+    if (izKluba >= MAX_IZ_KLUBA)
+      return setSporocilo(
+        `Iz kluba ${igralec.team_name} imaš že ${MAX_IZ_KLUBA} igralce.`,
       )
-      return
-    }
+
     const prvih = izbrani.filter((s) => s.is_starter).length
     setIzbrani([
       ...izbrani,
@@ -110,7 +125,6 @@ export default function MojaEkipa() {
   }
 
   function preklopiPrvo(playerId) {
-    setSporocilo(null)
     setIzbrani(
       izbrani.map((s) =>
         s.player_id === playerId ? { ...s, is_starter: !s.is_starter } : s,
@@ -127,7 +141,7 @@ export default function MojaEkipa() {
       const { data, error } = await supabase
         .from('fantasy_teams')
         .insert({ owner_id: session.user.id, name: imeEkipe.trim() })
-        .select('id, name')
+        .select('id, name, budget')
         .single()
       if (error) return setNapaka(error.message)
       ekipaId = data.id
@@ -141,96 +155,138 @@ export default function MojaEkipa() {
       setEkipa({ ...ekipa, name: imeEkipe.trim() })
     }
 
-    // nabor prepišemo v celoti
-    const { error: eDel } = await supabase
-      .from('fantasy_roster')
-      .delete()
-      .eq('fantasy_team_id', ekipaId)
-    if (eDel) return setNapaka(eDel.message)
-
-    if (izbrani.length > 0) {
-      const { error: eIns } = await supabase.from('fantasy_roster').insert(
+    await supabase.from('fantasy_roster').delete().eq('fantasy_team_id', ekipaId)
+    if (izbrani.length) {
+      const { error } = await supabase.from('fantasy_roster').insert(
         izbrani.map((s) => ({
           fantasy_team_id: ekipaId,
           player_id: s.player_id,
           is_starter: s.is_starter,
         })),
       )
-      if (eIns) return setNapaka(eIns.message)
+      if (error) return setNapaka(error.message)
     }
-    setSporocilo('Ekipa je shranjena.')
+    setSporocilo('Ekipa je shranjena. 💾')
   }
 
-  if (loading || nalaganje) return <p className="text-slate-500">Nalaganje …</p>
+  if (loading || nalaganje)
+    return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
   if (!session)
-    return <p className="text-slate-600">Za sestavo ekipe se moraš prijaviti.</p>
+    return (
+      <p className="kartica p-6 text-center text-slate-300">
+        Za sestavo ekipe se moraš prijaviti.
+      </p>
+    )
 
-  const vidni =
-    filterKlub === 'vsi'
-      ? igralci
-      : igralci.filter((i) => String(i.team_id) === filterKlub)
+  const vidni = igralci.filter((i) => {
+    if (filterKlub !== 'vsi' && String(i.team_id) !== filterKlub) return false
+    if (filterPoz !== 'vse' && i.position !== filterPoz) return false
+    if (iskanje && !i.full_name.toLowerCase().includes(iskanje.toLowerCase()))
+      return false
+    return true
+  })
 
   const steviloPrvih = izbraniPodrobno.filter((s) => s.is_starter).length
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Moja ekipa</h1>
+      <h1 className="text-3xl font-black naslov">Moja ekipa</h1>
 
-      <label className="block max-w-sm text-sm text-slate-600">
-        Ime ekipe
+      {/* proračun */}
+      <div className="kartica grid grid-cols-3 gap-3 p-4">
+        <Merilo oznaka="Proračun" vrednost={formatirajTocke(proracun)} />
+        <Merilo
+          oznaka="Porabljeno"
+          vrednost={formatirajTocke(porabljeno)}
+          barva={porabljeno > proracun ? 'text-rose-400' : undefined}
+        />
+        <Merilo
+          oznaka="Ostane"
+          vrednost={formatirajTocke(preostalo)}
+          barva={preostalo < 0 ? 'text-rose-400' : 'text-gnl-300'}
+        />
+        <div className="col-span-3">
+          <div className="h-2 overflow-hidden rounded-full bg-white/10">
+            <div
+              className={`h-full rounded-full transition-all duration-300 ${
+                porabljeno > proracun
+                  ? 'bg-rose-500'
+                  : 'bg-gradient-to-r from-gnl-500 to-gnl-300'
+              }`}
+              style={{
+                width: `${Math.min(100, (porabljeno / proracun) * 100)}%`,
+              }}
+            />
+          </div>
+          <div className="mt-2 flex justify-between text-xs text-slate-500">
+            <span>
+              {izbrani.length}/{VELIKOST_EKIPE} igralcev
+            </span>
+            <span>
+              prva postava {steviloPrvih}/{STEVILO_PRVIH}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <label className="block">
+        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+          Ime ekipe
+        </span>
         <input
           value={imeEkipe}
           onChange={(e) => setImeEkipe(e.target.value)}
           placeholder="npr. Gorenjski Orli"
-          className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+          className="mt-1 w-full max-w-sm rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
         />
       </label>
 
-      <section className="rounded border border-slate-200 bg-white p-4">
-        <h2 className="mb-2 font-semibold">
-          Izbrani igralci ({izbrani.length}/{VELIKOST_EKIPE}) — prva postava{' '}
-          {steviloPrvih}/{STEVILO_PRVIH}
-        </h2>
-
+      {/* izbrani po pozicijah */}
+      <section className="kartica p-4">
         {izbraniPodrobno.length === 0 ? (
-          <p className="text-sm text-slate-500">Spodaj izberi igralce.</p>
+          <p className="text-sm text-slate-400">
+            Spodaj izberi igralce. Kliknil boš na ⊕, cena se odšteje od
+            proračuna.
+          </p>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2">
             {Object.entries(POZICIJE).map(([koda, p]) => {
               const skupina = izbraniPodrobno.filter((s) => s.position === koda)
-              if (skupina.length === 0) return null
+              if (!skupina.length) return null
               return (
                 <div key={koda}>
-                  <h3 className="text-xs font-semibold uppercase text-slate-500">
+                  <h3 className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-400">
                     {p.naslov}
                   </h3>
-                  <ul className="mt-1 space-y-1">
+                  <ul className="space-y-1">
                     {skupina.map((s) => (
-                      <li key={s.id} className="flex items-center gap-2 text-sm">
+                      <li
+                        key={s.id}
+                        className="flex items-center gap-2 rounded-lg bg-white/5 px-2 py-1.5 text-sm"
+                      >
                         <button
                           onClick={() => preklopiPrvo(s.id)}
-                          title="Preklopi med prvo postavo in klopjo"
-                          className={
-                            'rounded px-1.5 py-0.5 text-xs ' +
-                            (s.is_starter
-                              ? 'bg-gnl-600 text-white'
-                              : 'bg-slate-200 text-slate-600')
-                          }
+                          title="Prva postava / klop"
+                          className={`znacka ${
+                            s.is_starter
+                              ? 'bg-gnl-400/25 text-gnl-200'
+                              : 'bg-white/10 text-slate-400'
+                          }`}
                         >
                           {s.is_starter ? 'prva' : 'klop'}
                         </button>
-                        <span className="flex-1">
-                          {s.first_name} {s.last_name}
+                        <span className="min-w-0 flex-1 truncate">
+                          {prikazniIme(s.full_name)}
                         </span>
-                        <span className="text-slate-400">
-                          {s.teams?.short_name}
+                        <span className="tabular-nums text-slate-400">
+                          {formatirajTocke(s.value)}
                         </span>
                         <button
                           onClick={() => preklopi(s)}
-                          className="text-slate-400 hover:text-red-600"
+                          className="text-slate-500 hover:text-rose-400"
                           title="Odstrani"
                         >
-                          ×
+                          ✕
                         </button>
                       </li>
                     ))}
@@ -242,9 +298,9 @@ export default function MojaEkipa() {
         )}
 
         {napakeEkipe.length > 0 && (
-          <ul className="mt-3 list-disc space-y-0.5 pl-5 text-sm text-amber-700">
+          <ul className="mt-3 space-y-1 text-sm text-amber-300">
             {napakeEkipe.map((n) => (
-              <li key={n}>{n}</li>
+              <li key={n}>• {n}</li>
             ))}
           </ul>
         )}
@@ -253,7 +309,7 @@ export default function MojaEkipa() {
           <button
             onClick={shrani}
             disabled={!imeEkipe.trim()}
-            className="rounded bg-gnl-600 px-4 py-2 text-white hover:bg-gnl-700 disabled:opacity-50"
+            className="gumb-glavni"
           >
             Shrani ekipo
           </button>
@@ -263,17 +319,24 @@ export default function MojaEkipa() {
             </span>
           )}
         </div>
-        {sporocilo && <p className="mt-2 text-sm text-gnl-600">{sporocilo}</p>}
-        {napaka && <p className="mt-2 text-sm text-red-600">Napaka: {napaka}</p>}
+        {sporocilo && <p className="mt-2 text-sm text-gnl-300">{sporocilo}</p>}
+        {napaka && <p className="mt-2 text-sm text-rose-400">Napaka: {napaka}</p>}
       </section>
 
-      <section>
-        <div className="mb-2 flex flex-wrap items-center gap-3">
-          <h2 className="font-semibold">Vsi igralci</h2>
+      {/* trg igralcev */}
+      <section className="space-y-3">
+        <h2 className="text-xl font-bold">Trg igralcev</h2>
+        <div className="kartica flex flex-wrap gap-2 p-3">
+          <input
+            value={iskanje}
+            onChange={(e) => setIskanje(e.target.value)}
+            placeholder="Išči po imenu …"
+            className="min-w-40 flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+          />
           <select
             value={filterKlub}
             onChange={(e) => setFilterKlub(e.target.value)}
-            className="rounded border border-slate-300 px-2 py-1 text-sm"
+            className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
           >
             <option value="vsi">Vsi klubi</option>
             {klubi.map(([id, ime]) => (
@@ -282,39 +345,75 @@ export default function MojaEkipa() {
               </option>
             ))}
           </select>
+          <select
+            value={filterPoz}
+            onChange={(e) => setFilterPoz(e.target.value)}
+            className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+          >
+            <option value="vse">Vse pozicije</option>
+            {Object.entries(POZICIJE).map(([k, p]) => (
+              <option key={k} value={k}>
+                {p.naslov}
+              </option>
+            ))}
+          </select>
         </div>
 
-        <ul className="divide-y divide-slate-100 rounded border border-slate-200 bg-white">
-          {vidni.map((i) => {
+        <ul className="space-y-2">
+          {vidni.slice(0, 80).map((i) => {
             const jeIzbran = izbrani.some((s) => s.player_id === i.id)
+            const predrag = !jeIzbran && Number(i.value) > preostalo
             return (
               <li
                 key={i.id}
-                className="flex items-center gap-3 px-3 py-2 text-sm"
+                className={`kartica flex items-center gap-3 p-3 ${
+                  jeIzbran ? 'ring-1 ring-gnl-400/40' : ''
+                } ${predrag ? 'opacity-50' : 'kartica-hover'}`}
               >
-                <span className="w-20 text-xs text-slate-500">
-                  {IME_POZICIJE[i.position] ?? '—'}
+                <span className={`znacka ${razredPozicije(i.position)}`}>
+                  {KRATKA_POZICIJA[i.position] ?? '?'}
                 </span>
-                <span className="flex-1">
-                  {i.first_name} {i.last_name}
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-semibold">
+                    {prikazniIme(i.full_name)}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {i.team_short} · {i.goals} golov · {i.minutes} min
+                  </div>
+                </div>
+                <span className="w-12 text-right font-black tabular-nums text-gnl-300">
+                  {formatirajTocke(i.value)}
                 </span>
-                <span className="text-slate-500">{i.teams?.short_name}</span>
                 <button
                   onClick={() => preklopi(i)}
-                  className={
-                    'rounded px-2 py-1 text-xs ' +
-                    (jeIzbran
-                      ? 'bg-slate-200 text-slate-700'
-                      : 'bg-gnl-600 text-white hover:bg-gnl-700')
-                  }
+                  disabled={predrag}
+                  className={jeIzbran ? 'gumb-tih' : 'gumb-glavni'}
                 >
-                  {jeIzbran ? 'Odstrani' : 'Dodaj'}
+                  {jeIzbran ? '✕' : '⊕'}
                 </button>
               </li>
             )
           })}
         </ul>
+        {vidni.length > 80 && (
+          <p className="text-center text-xs text-slate-500">
+            Prikazanih prvih 80 od {vidni.length} — zoži izbor z iskanjem.
+          </p>
+        )}
       </section>
+    </div>
+  )
+}
+
+function Merilo({ oznaka, vrednost, barva }) {
+  return (
+    <div>
+      <div className={`text-2xl font-black tabular-nums ${barva ?? ''}`}>
+        {vrednost}
+      </div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">
+        {oznaka}
+      </div>
     </div>
   )
 }

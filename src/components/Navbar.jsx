@@ -6,7 +6,8 @@ import { supabase } from '../lib/supabase'
 const povezave = [
   { pot: '/', naslov: 'Domov' },
   { pot: '/moja-ekipa', naslov: 'Moja ekipa' },
-  { pot: '/glasovanje', naslov: 'Glasovanje' },
+  { pot: '/glasovanje', naslov: 'Asistence' },
+  { pot: '/pozicije', naslov: 'Pozicije' },
   { pot: '/igralci', naslov: 'Igralci' },
   { pot: '/lestvica', naslov: 'Lestvica' },
 ]
@@ -29,58 +30,60 @@ export default function Navbar() {
       .then(({ data }) => setJeAdmin(Boolean(data?.is_admin)))
   }, [session])
 
-  const vsePovezave = jeAdmin
+  const vse = jeAdmin
     ? [...povezave, { pot: '/admin', naslov: 'Admin' }]
     : povezave
 
   const slog = ({ isActive }) =>
     isActive
-      ? 'font-semibold text-gnl-600'
-      : 'text-slate-600 hover:text-slate-900'
+      ? 'rounded-lg bg-white/10 px-3 py-1.5 font-semibold text-gnl-300'
+      : 'rounded-lg px-3 py-1.5 text-slate-400 hover:bg-white/5 hover:text-slate-100'
 
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <nav className="mx-auto max-w-4xl px-4 py-3">
-        <div className="flex items-center gap-4">
-          <span className="font-bold text-gnl-600">Gorenjska Fantasy ⚽</span>
+    <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
+      <nav className="mx-auto max-w-5xl px-4 py-3">
+        <div className="flex items-center gap-3">
+          <NavLink to="/" className="flex items-center gap-2 font-black">
+            <span className="text-xl">⚽</span>
+            <span className="hidden naslov sm:inline">Gorenjska Fantasy</span>
+          </NavLink>
 
-          <div className="ml-auto flex items-center gap-4">
-            <div className="hidden gap-4 text-sm sm:flex">
-              {vsePovezave.map((p) => (
-                <NavLink key={p.pot} to={p.pot} className={slog} end={p.pot === '/'}>
-                  {p.naslov}
-                </NavLink>
-              ))}
-            </div>
-
-            <div className="text-sm">
-              {session ? (
-                <button
-                  onClick={() => supabase.auth.signOut()}
-                  className="text-slate-600 hover:text-slate-900"
-                >
-                  Odjava
-                </button>
-              ) : (
-                <NavLink to="/prijava" className="text-gnl-600 hover:underline">
-                  Prijava
-                </NavLink>
-              )}
-            </div>
-
-            <button
-              onClick={() => setOdprt(!odprt)}
-              aria-label="Meni"
-              className="text-slate-600 sm:hidden"
-            >
-              ☰
-            </button>
+          <div className="ml-auto hidden items-center gap-1 text-sm lg:flex">
+            {vse.map((p) => (
+              <NavLink key={p.pot} to={p.pot} className={slog} end={p.pot === '/'}>
+                {p.naslov}
+              </NavLink>
+            ))}
           </div>
+
+          <div className="ml-auto text-sm lg:ml-0">
+            {session ? (
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="rounded-lg px-3 py-1.5 text-slate-400 hover:text-slate-100"
+              >
+                Odjava
+              </button>
+            ) : (
+              <NavLink to="/prijava" className="gumb-glavni text-sm">
+                Prijava
+              </NavLink>
+            )}
+          </div>
+
+          <button
+            onClick={() => setOdprt(!odprt)}
+            aria-label="Meni"
+            aria-expanded={odprt}
+            className="rounded-lg px-2 py-1 text-slate-300 lg:hidden"
+          >
+            ☰
+          </button>
         </div>
 
         {odprt && (
-          <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 text-sm sm:hidden">
-            {vsePovezave.map((p) => (
+          <div className="animiraj-vstop mt-3 grid grid-cols-2 gap-1 border-t border-white/10 pt-3 text-sm lg:hidden">
+            {vse.map((p) => (
               <NavLink
                 key={p.pot}
                 to={p.pot}

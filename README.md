@@ -1,20 +1,29 @@
 # Gorenjska Fantasy Liga ⚽
 
-Fantasy football aplikacija za člansko kategorijo **1. Gorenjske nogometne lige (MNZG Kranj)**. Uporabniki sestavljajo svoje ekipe iz realnih igralcev lige, po vsakem krogu ocenjujejo kako je kdo igral, in glede na glasove/ocene zbirajo točke ter tekmujejo na skupni lestvici.
+Fantasy football aplikacija za člansko kategorijo **1. Gorenjske nogometne lige (MNZG Kranj)**. Uporabniki sestavljajo svoje ekipe iz realnih igralcev lige in zbirajo točke po uradni statistiki zapisnikov ter tekmujejo na skupni lestvici.
 
 ## Ideja
 
-Za razliko od klasičnega fantasy footballa (kjer točke temeljijo na uradni statistiki), ta aplikacija temelji na **glasovanju skupnosti**. Ker gre za amatersko/polprofesionalno ligo, kjer podrobne statistike ni na voljo, navijači in obiskovalci tekem sami ocenijo predstavo posameznega igralca. Skupne ocene tvorijo točke, ki gredo v fantasy ekipe.
+Točke izhajajo iz **uradnih zapisnikov MNZ Gorenjska** — goli, minute, ohranjene
+mreže, kartoni, enajstmetrovke. Zapisniki pa dveh stvari ne povedo, zato ju
+določi **skupnost z glasovanjem**:
+
+1. **kdo je podal asistenco** za posamezni gol,
+2. **na katerem mestu igralec igra** — zapisnik označi le vratarja z `(V)`,
+   postave pa našteje po številkah dresov, ne po pozicijah.
+
+Pri **5 glasovih** za istega kandidata se podatek potrdi in začne šteti.
 
 ## Ključne funkcionalnosti
 
-- **Sestavljanje ekipe** — 15 igralcev, od tega 11 v prvi postavi; največ 3 iz istega kluba.
-- **Glasovanje / ocenjevanje** — po vsakem krogu uporabniki ocenijo predstavo igralcev z oceno 1–10.
-- **Točkovanje** — igralec dobi točke glede na povprečno oceno skupnosti (najmanj 3 glasovi); točke prve postave se seštejejo v fantasy ekipo.
+- **Sestavljanje ekipe** — 15 igralcev, 11 v prvi postavi, največ 3 iz kluba, proračun 100.
+- **Glasovanje o asistencah** — skupnost pove, kdo je podal; pri 5 glasovih se potrdi.
+- **Glasovanje o pozicijah** — zapisnik pozicij ne pove, zato jih določi skupnost.
+- **Točkovanje** — po pravilih lige iz statistike zapisnikov (glej spodaj).
 - **Lestvica** — skupna razvrstitev vseh fantasy ekip.
 - **Uporabniški računi** — registracija in prijava z e-pošto in geslom.
 - **Pregled kluba/igralcev** — seznam ekip in igralcev 1. GNL.
-- **Administracija** — dodajanje krogov, odpiranje/zapiranje glasovanja, preračun točk.
+- **Administracija** — pregled nepopolnih zapisnikov, ročne pozicije, NZS podatki, preračun točk.
 
 ## Tehnološki sklop
 
@@ -22,6 +31,41 @@ Za razliko od klasičnega fantasy footballa (kjer točke temeljijo na uradni sta
 - **Backend / baza:** Supabase (PostgreSQL + avtentikacija + PostgREST)
 - **Slog:** Tailwind CSS
 - **Gostovanje:** Vercel (frontend) + Supabase (baza)
+
+## Točkovanje
+
+| | Točke |
+|---|---|
+| Nastop do 60 minut | +1 |
+| Odigranih 60 minut ali več (brez sodniškega podaljška) | +2 |
+| Gol vratarja / branilca / vezista / napadalca | +10 / +6 / +5 / +4 |
+| Asistenca | +3 |
+| Brez prejetega gola (vsaj 60 min) — vratar, branilec | +4 |
+| Brez prejetega gola (vsaj 60 min) — vezist | +1 |
+| Vsaka 2 prejeta gola — vratar, branilec | −1 |
+| Obranjena enajstmetrovka | +5 |
+| Zgrešena enajstmetrovka | −2 |
+| Avtogol | −2 |
+| Rumeni karton | −1 |
+| Rdeči karton | −3 |
+
+Pravila so na enem mestu v [`src/lib/tockovanje.js`](src/lib/tockovanje.js)
+(prikaz) in v funkciji `tocke_za_nastop` (izračun v bazi). Vsako pravilo
+pokriva test v `npm run smoke`.
+
+## Vrednost igralcev
+
+Cena (4.0–12.0) se izračuna iz statistike prejšnje sezone: goli na 90 minut,
+delež tekem brez prejetega gola, rednost nastopanja in disciplina. Igralci z
+manj kot 270 minutami dobijo privzeto ceno, da jih en dober nastop ne preceni.
+
+> Vrednotenje namenoma **ne** izhaja iz fantasy točk, ker so te odvisne od
+> pozicije — dokler skupnost pozicij ne izglasuje, bi to precenilo vratarje
+> (edine z znano pozicijo iz zapisnika).
+
+Administrator lahko doda podatke z NZS (najvišja odigrana liga in minute v njej),
+kar ceno dvigne. Iskalnik NZS je v `robots.txt` prepovedan robotom, zato se ti
+podatki vnesejo ročno v Administraciji.
 
 ## Pravila ekipe
 
@@ -36,6 +80,7 @@ Določena so v [`src/lib/pravila.js`](src/lib/pravila.js), da so na enem mestu:
 | Vezisti v prvi postavi | 2–5 |
 | Napadalci v prvi postavi | 1–3 |
 | Največ igralcev iz istega kluba | 3 |
+| Proračun | 100.0 |
 
 Točke zbirajo le igralci v prvi postavi.
 
@@ -43,25 +88,25 @@ Točke zbirajo le igralci v prvi postavi.
 
 | Tabela | Opis |
 |---|---|
-| `profiles` | Profili uporabnikov (vezani na `auth.users`), zastavica `is_admin` |
-| `teams` | Realni klubi v 1. GNL |
-| `players` | Realni igralci, povezani s klubom |
-| `fantasy_teams` | Fantasy ekipe uporabnikov (ena na uporabnika) |
-| `fantasy_roster` | Povezava fantasy ekipe ↔ izbrani igralci (`is_starter`) |
-| `rounds` | Krogi sezone + okno glasovanja (`voting_opens_at`, `voting_closes_at`) |
-| `ratings` | Glasovi/ocene: uporabnik → igralec → krog → ocena |
-| `player_scores` | Izračunane točke igralca na krog (povprečje ocen) |
+| `profiles` | Profili uporabnikov, zastavica `is_admin` |
+| `teams` / `players` | Klubi in igralci 1. GNL (cena, pozicija, vir pozicije) |
+| `rounds` / `matches` | Krogi in tekme (z izvorom: `zapisnik_id`, `source_url`) |
+| `appearances` | Nastop igralca na tekmi: minute, goli, kartoni, prejeti goli |
+| `goals` | Posamezni gol (strelec, minuta, 11m, avtogol, potrjena asistenca) |
+| `assist_votes` | Glasovi skupnosti o asistenci |
+| `position_votes` | Glasovi skupnosti o poziciji |
+| `fantasy_teams` / `fantasy_roster` | Ekipe uporabnikov in njihovi nabori |
+| `player_scores` | Točke igralca po krogih |
+| `settings` | Pragova glasov (privzeto 5) |
 
-Poleg tega:
-
-- pogled `fantasy_team_standings` — lestvica fantasy ekip,
-- funkcija `recompute_round_scores(p_round_id)` — preračuna povprečja za krog.
+Pogledi: `appearance_points` (točke nastopa), `player_overview`,
+`player_season_stats`, `fantasy_team_standings`, `fantasy_team_budget`.
 
 ### Varnost (RLS)
 
 - Klubi, igralci, krogi, točke in lestvica so **javno berljivi**.
-- Posamezne ocene vidi **samo glasovalec sam** — javne so le agregirane vrednosti, da zgodnji glasovi ne vplivajo na kasnejše.
-- Glas je mogoče oddati ali spremeniti **le, dokler je okno glasovanja odprto**.
+- Glasovi o asistencah in pozicijah so **javno vidni** (skupnost vidi napredek do praga), oddati pa jih je mogoče **le v svojem imenu**.
+- Asistenco in pozicijo potrdi **sprožilec v bazi**, ne odjemalec — praga ni mogoče obiti iz brskalnika.
 - Fantasy ekipo in nabor ureja **le lastnik**.
 - Kroge, klube in igralce urejajo **le administratorji** (`profiles.is_admin`).
 
@@ -88,22 +133,29 @@ npm run dev
 Aplikacija teče na <http://localhost:5173>, Supabase Studio na <http://localhost:54323>,
 prestreženo e-pošto pa vidiš v Mailpitu na <http://localhost:54324>.
 
-Migracije iz `supabase/migrations/` in demo podatki iz `supabase/seed.sql` se ob
-`supabase start` (oz. `npm run db:reset`) uporabijo samodejno.
+Migracije iz `supabase/migrations/` se ob `supabase start` (oz. `npm run db:reset`)
+uporabijo samodejno. `supabase/seed.sql` vsebuje le demo podatke za prvi zagon —
+za prave podatke uporabi uvoz spodaj.
 
-### Demo podatki
-
-`supabase/seed.sql` vnese 8 gorenjskih klubov, 14 demo igralcev na klub in 3 kroge.
-
-> **Opomba:** imena klubov so resnična, **imena igralcev so izmišljena**.
-> Pred uporabo v živo uvozi resnične nabore z [MNZG Kranj](https://www.mnzgkranj.si/).
-
-Za bogatejšo demo vsebino (6 fantasy ekip in ocene za vse kroge):
+### Uvoz pravih podatkov
 
 ```bash
 export SUPABASE_SERVICE_ROLE_KEY=$(npx supabase status -o json | jq -r .SERVICE_ROLE_KEY)
-node scripts/demo-data.mjs
+
+# uvozi vse zapisnike sezone (--pocisti najprej pobriše demo podatke)
+node scripts/uvoz-zapisnikov.mjs --liga 1502 --pocisti
+
+# izračunaj cene igralcev iz uvožene statistike
+node scripts/ovrednoti-igralce.mjs
 ```
+
+`--liga 1502` je sezona 2025/26, `--liga 1600` tekoča. Prenesene strani se
+predpomnijo v `scripts/.predpomnilnik/`, da ponovni uvoz ne obremenjuje strani
+MNZ.
+
+Zapisniki so vnešeni ročno in so občasno pomanjkljivi (manjkajoča oznaka
+vratarja, postava z 10 igralci). Uvoz jih vseeno prevzame, opozorila pa zapiše
+v `matches.import_warnings` in jih pokaže v Administraciji.
 
 ## Ukazi
 
@@ -112,8 +164,8 @@ node scripts/demo-data.mjs
 | `npm run dev` | razvojni strežnik |
 | `npm run build` | produkcijski build |
 | `npm run preview` | predogled builda |
-| `npm test` | end-to-end test proti bazi (registracija, RLS, glasovanje, točke, lestvica) |
-| `npm run smoke` | izris vseh strani + preverjanje pravil ekipe, brez brskalnika |
+| `npm test` | end-to-end test proti bazi (RLS, glasovanje, pragovi, točkovanje, proračun) |
+| `npm run smoke` | izris vseh strani + vsa pravila točkovanja in sestave ekipe |
 | `npm run db:start` / `db:stop` | zagon/ustavitev lokalnega Supabase |
 | `npm run db:reset` | ponovna uporaba migracij in seed podatkov |
 
@@ -129,14 +181,18 @@ VITE_SUPABASE_ANON_KEY=...
 ## Načrt razvoja (roadmap)
 
 - [x] Postavitev baze in avtentikacije
+- [x] Uvoz klubov, igralcev in zapisnikov 1. GNL
+- [x] Točkovanje iz uradne statistike
+- [x] Glasovanje o asistencah in pozicijah (prag 5 glasov)
+- [x] Vrednotenje igralcev in proračun
 - [x] Sestavljanje fantasy ekipe
-- [x] Sistem glasovanja/ocenjevanja po krogih
-- [x] Izračun točk in lestvica
-- [x] Administracija (dodajanje krogov, okno glasovanja, preračun točk)
-- [ ] Uvoz resničnih klubov in igralcev 1. GNL
-- [ ] Lestvica po posameznih krogih (trenutno le skupna)
-- [ ] Mobilni prikaz / PWA (postavitev je odzivna, PWA še ni)
-- [ ] Namestitev v produkcijo (Vercel + Supabase)
+- [x] Lestvica
+- [x] Administracija
+- [ ] Samodejno osveževanje zapisnikov tekoče sezone
+- [ ] Lestvica po posameznih krogih in menjave med krogi
+- [ ] Obranjene enajstmetrovke (zapisnik jih ne beleži — ročni vnos)
+- [ ] Povezava igralcev z NZS profili
+- [ ] PWA in namestitev v produkcijo
 
 ## Podatki lige
 

@@ -1,5 +1,5 @@
-// Preveri, da se vse strani izrišejo brez napake (brez brskalnika).
-// Zaganja se prek: npm run smoke
+// Preveri, da se vse strani izrišejo brez napake, in da točkovanje
+// natanko sledi pravilom lige. Brez brskalnika in brez baze.
 import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router'
 import { AuthProvider } from '../src/lib/useAuth'
@@ -10,21 +10,29 @@ import Lestvica from '../src/pages/Lestvica'
 import Prijava from '../src/pages/Prijava'
 import MojaEkipa from '../src/pages/MojaEkipa'
 import Glasovanje from '../src/pages/Glasovanje'
+import Pozicije from '../src/pages/Pozicije'
 import Administracija from '../src/pages/Administracija'
-import { preveriEkipo, VELIKOST_EKIPE } from '../src/lib/pravila'
+import { preveriEkipo, VELIKOST_EKIPE, PRORACUN } from '../src/lib/pravila'
+import { tockeZaNastop } from '../src/lib/tockovanje'
 
+let napak = 0
+const preveri = (label, cond, extra = '') => {
+  console.log(`${cond ? 'PASS' : 'FAIL'}  ${label}${extra ? ' — ' + extra : ''}`)
+  if (!cond) napak++
+}
+
+// --- izris strani ----------------------------------------------------------
 const strani = [
   ['Navbar', Navbar, '/'],
   ['Domov', Domov, '/'],
   ['Moja ekipa', MojaEkipa, '/moja-ekipa'],
-  ['Glasovanje', Glasovanje, '/glasovanje'],
+  ['Asistence', Glasovanje, '/glasovanje'],
+  ['Pozicije', Pozicije, '/pozicije'],
   ['Igralci', Igralci, '/igralci'],
   ['Lestvica', Lestvica, '/lestvica'],
   ['Prijava', Prijava, '/prijava'],
   ['Administracija', Administracija, '/admin'],
 ]
-
-let napak = 0
 
 for (const [ime, Komponenta, pot] of strani) {
   try {
@@ -35,20 +43,100 @@ for (const [ime, Komponenta, pot] of strani) {
         </AuthProvider>
       </StaticRouter>,
     )
-    if (!html || html.length === 0) throw new Error('prazen izris')
-    console.log(`PASS  izris: ${ime} (${html.length} znakov)`)
+    preveri(`izris: ${ime}`, Boolean(html && html.length))
   } catch (e) {
-    console.log(`FAIL  izris: ${ime} — ${e.message}`)
-    napak++
+    preveri(`izris: ${ime}`, false, e.message)
   }
 }
 
-// --- logika pravil ekipe ---------------------------------------------------
-const igralec = (id, position, team_id, is_starter) => ({
+// --- točkovanje ------------------------------------------------------------
+const nastop = (o = {}) => ({
+  minute: 90,
+  goli: 0,
+  asistence: 0,
+  cleanSheet: false,
+  prejetiGoli: 0,
+  obranjeneEnajstmetrovke: 0,
+  zgreseneEnajstmetrovke: 0,
+  avtogoli: 0,
+  rumeni: 0,
+  rdeci: 0,
+  ...o,
+})
+
+const t = (o, poz) => tockeZaNastop(nastop(o), poz).skupaj
+
+console.log('')
+preveri('ni nastopa = 0 točk', t({ minute: 0 }, 'MID') === 0)
+preveri('nastop do 60 minut = 1', t({ minute: 59 }, 'MID') === 1)
+preveri('nastop 60 minut = 2', t({ minute: 60 }, 'MID') === 2)
+preveri('nastop 90 minut = 2', t({ minute: 90 }, 'MID') === 2)
+
+preveri('gol vratarja = 10', t({ goli: 1 }, 'GK') === 2 + 10)
+preveri('gol branilca = 6', t({ goli: 1 }, 'DEF') === 2 + 6)
+preveri('gol vezista = 5', t({ goli: 1 }, 'MID') === 2 + 5)
+preveri('gol napadalca = 4', t({ goli: 1 }, 'FWD') === 2 + 4)
+preveri('dva gola vezista = 10', t({ goli: 2 }, 'MID') === 2 + 10)
+preveri('asistenca = 3', t({ asistence: 1 }, 'FWD') === 2 + 3)
+
+preveri(
+  'clean sheet vratarja = 4',
+  t({ cleanSheet: true }, 'GK') === 2 + 4,
+)
+preveri(
+  'clean sheet branilca = 4',
+  t({ cleanSheet: true }, 'DEF') === 2 + 4,
+)
+preveri('clean sheet vezista = 1', t({ cleanSheet: true }, 'MID') === 2 + 1)
+preveri('clean sheet napadalca = 0', t({ cleanSheet: true }, 'FWD') === 2)
+preveri(
+  'clean sheet pod 60 minut se ne šteje',
+  t({ minute: 45, cleanSheet: true }, 'DEF') === 1,
+)
+
+preveri(
+  '2 prejeta gola = -1 (vratar)',
+  t({ prejetiGoli: 2 }, 'GK') === 2 - 1,
+)
+preveri(
+  '3 prejeti goli = -1 (branilec)',
+  t({ prejetiGoli: 3 }, 'DEF') === 2 - 1,
+)
+preveri(
+  '4 prejeti goli = -2 (vratar)',
+  t({ prejetiGoli: 4 }, 'GK') === 2 - 2,
+)
+preveri(
+  'prejeti goli ne kaznujejo vezista',
+  t({ prejetiGoli: 4 }, 'MID') === 2,
+)
+
+preveri(
+  'obranjena enajstmetrovka = 5',
+  t({ obranjeneEnajstmetrovke: 1 }, 'GK') === 2 + 5,
+)
+preveri(
+  'zgrešena enajstmetrovka = -2',
+  t({ zgreseneEnajstmetrovke: 1 }, 'FWD') === 2 - 2,
+)
+preveri('avtogol = -2', t({ avtogoli: 1 }, 'DEF') === 2 - 2)
+preveri('rumeni karton = -1', t({ rumeni: 1 }, 'MID') === 2 - 1)
+preveri('rdeči karton = -3', t({ rdeci: 1 }, 'MID') === 2 - 3)
+
+// sestavljen primer: branilec, 90 min, gol, clean sheet, rumeni karton
+preveri(
+  'sestavljen primer: 2+6+4-1 = 11',
+  t({ goli: 1, cleanSheet: true, rumeni: 1 }, 'DEF') === 11,
+)
+
+// --- pravila ekipe ---------------------------------------------------------
+console.log('')
+const igralec = (id, position, team_id, is_starter, value = 5) => ({
   id,
   position,
   team_id,
   is_starter,
+  value,
 })
 
 const veljavna = [
@@ -62,33 +150,41 @@ const veljavna = [
   igralec(15, 'FWD', 2, false),
 ]
 
-const preveri = (label, cond, extra = '') => {
-  console.log(`${cond ? 'PASS' : 'FAIL'}  ${label}${extra ? ' — ' + extra : ''}`)
-  if (!cond) napak++
-}
-
 preveri(
-  'pravila: veljavna ekipa nima napak',
-  preveriEkipo(veljavna).length === 0,
-  preveriEkipo(veljavna).join(' | '),
+  'veljavna ekipa nima napak',
+  preveriEkipo(veljavna, 100).length === 0,
+  preveriEkipo(veljavna, 100).join(' | '),
+)
+preveri('velikost ekipe je 15', VELIKOST_EKIPE === 15)
+preveri('privzet proračun je 100', PRORACUN === 100)
+preveri(
+  'premajhna ekipa je zavrnjena',
+  preveriEkipo(veljavna.slice(0, 10), 100).length > 0,
 )
 preveri(
-  'pravila: premajhna ekipa je zavrnjena',
-  preveriEkipo(veljavna.slice(0, 10)).length > 0,
-)
-preveri(
-  'pravila: 2 vratarja v prvi postavi sta zavrnjena',
+  '2 vratarja v prvi postavi sta zavrnjena',
   preveriEkipo(
     veljavna.map((i) => (i.id === 12 ? { ...i, is_starter: true } : i)),
+    100,
   ).length > 0,
 )
 preveri(
-  'pravila: 4 igralci iz istega kluba so zavrnjeni',
-  preveriEkipo(veljavna.map((i) => ({ ...i, team_id: 1 }))).some((n) =>
+  '4 igralci iz istega kluba so zavrnjeni',
+  preveriEkipo(veljavna.map((i) => ({ ...i, team_id: 1 })), 100).some((n) =>
     n.includes('istega kluba'),
   ),
 )
-preveri('pravila: velikost ekipe je 15', VELIKOST_EKIPE === 15)
+preveri(
+  'presežen proračun je zavrnjen',
+  preveriEkipo(veljavna, 50).some((n) => n.includes('proračun')),
+)
+preveri(
+  'igralec brez pozicije sproži opozorilo',
+  preveriEkipo(
+    veljavna.map((i) => (i.id === 5 ? { ...i, position: null } : i)),
+    100,
+  ).some((n) => n.includes('pozicije')),
+)
 
 console.log(napak === 0 ? '\nVSE OK' : `\n${napak} NAPAK`)
 process.exit(napak === 0 ? 0 : 1)

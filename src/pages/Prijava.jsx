@@ -34,37 +34,37 @@ export default function Prijava() {
 
   if (session)
     return (
-      <p className="text-slate-600">Prijavljen si kot {session.user.email}.</p>
+      <p className="text-slate-300">Prijavljen si kot {session.user.email}.</p>
     )
 
   return (
     <div className="max-w-sm space-y-4">
-      <h1 className="text-2xl font-bold">
+      <h1 className="text-3xl font-black naslov">
         {nacin === 'registracija' ? 'Registracija' : 'Prijava'}
       </h1>
 
       <form onSubmit={poslji} className="space-y-3">
         {nacin === 'registracija' && (
-          <label className="block text-sm text-slate-600">
+          <label className="block text-sm text-slate-400">
             Prikazno ime
             <input
               value={ime}
               onChange={(e) => setIme(e.target.value)}
-              className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+              className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
             />
           </label>
         )}
-        <label className="block text-sm text-slate-600">
+        <label className="block text-sm text-slate-400">
           E-pošta
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
           />
         </label>
-        <label className="block text-sm text-slate-600">
+        <label className="block text-sm text-slate-400">
           Geslo
           <input
             type="password"
@@ -72,13 +72,13 @@ export default function Prijava() {
             minLength={6}
             value={geslo}
             onChange={(e) => setGeslo(e.target.value)}
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2"
+            className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
           />
         </label>
         <button
           type="submit"
           disabled={posiljam}
-          className="w-full rounded bg-gnl-600 px-4 py-2 text-white hover:bg-gnl-700 disabled:opacity-50"
+          className="gumb-glavni w-full"
         >
           {posiljam
             ? 'Pošiljam …'
@@ -86,7 +86,7 @@ export default function Prijava() {
               ? 'Ustvari račun'
               : 'Prijava'}
         </button>
-        {napaka && <p className="text-sm text-red-600">{napaka}</p>}
+        {napaka && <p className="text-sm text-rose-400">{napaka}</p>}
       </form>
 
       <button
@@ -94,7 +94,7 @@ export default function Prijava() {
           setNacin(nacin === 'prijava' ? 'registracija' : 'prijava')
           setNapaka(null)
         }}
-        className="text-sm text-gnl-600 hover:underline"
+        className="text-sm text-gnl-300 hover:underline"
       >
         {nacin === 'prijava'
           ? 'Nimaš računa? Registriraj se'

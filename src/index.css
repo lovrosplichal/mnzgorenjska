@@ -1,3 +1,100 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --teren: #0b3d2e;
+    --teren-svetel: #14603f;
+    --zlato: #ffd166;
+  }
+
+  body {
+    @apply bg-slate-950 text-slate-100 antialiased;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 50% -10%, rgba(20, 96, 63, 0.5), transparent),
+      radial-gradient(ellipse 60% 40% at 90% 10%, rgba(255, 209, 102, 0.08), transparent);
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  /* Kartica igralca — osnovni gradnik vmesnika */
+  .kartica {
+    @apply rounded-2xl border border-white/10 bg-white/5 backdrop-blur
+           shadow-lg shadow-black/20;
+  }
+
+  .kartica-hover {
+    @apply transition duration-150 hover:border-gnl-400/50 hover:bg-white/10
+           hover:shadow-xl hover:shadow-gnl-500/10 hover:-translate-y-0.5;
+  }
+
+  .gumb {
+    @apply rounded-xl px-4 py-2 font-semibold transition duration-150
+           active:scale-95 disabled:opacity-40 disabled:active:scale-100;
+  }
+
+  .gumb-glavni {
+    @apply gumb bg-gradient-to-b from-gnl-400 to-gnl-600 text-slate-950
+           shadow-lg shadow-gnl-500/25 hover:from-gnl-300 hover:to-gnl-500;
+  }
+
+  .gumb-tih {
+    @apply gumb border border-white/15 bg-white/5 text-slate-200
+           hover:border-white/30 hover:bg-white/10;
+  }
+
+  .znacka {
+    @apply inline-flex items-center gap-1 rounded-lg px-2 py-0.5
+           text-xs font-bold uppercase tracking-wide;
+  }
+
+  /* Barve pozicij — enake povsod, da jih oko takoj prepozna */
+  .poz-GK { @apply bg-amber-400/20 text-amber-200 ring-1 ring-amber-400/30; }
+  .poz-DEF { @apply bg-sky-400/20 text-sky-200 ring-1 ring-sky-400/30; }
+  .poz-MID { @apply bg-emerald-400/20 text-emerald-200 ring-1 ring-emerald-400/30; }
+  .poz-FWD { @apply bg-rose-400/20 text-rose-200 ring-1 ring-rose-400/30; }
+  .poz-none { @apply bg-white/10 text-slate-400 ring-1 ring-white/15; }
+
+  .naslov {
+    @apply bg-gradient-to-br from-white to-slate-400 bg-clip-text
+           text-transparent;
+  }
+
+  /* Travnate proge za igrišče */
+  .igrisce {
+    background-image:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.05) 0 12.5%, transparent 12.5% 25%);
+    background-size: 100% 25%;
+  }
+}
+
+@layer utilities {
+  @keyframes utrip {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.45; }
+  }
+  .animiraj-utrip { animation: utrip 1.6s ease-in-out infinite; }
+
+  @keyframes vstop {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+  .animiraj-vstop { animation: vstop 0.25s ease-out both; }
+
+  @keyframes pulz-obroc {
+    0% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.5); }
+    70% { box-shadow: 0 0 0 12px rgba(52, 211, 153, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+  }
+  .animiraj-pulz { animation: pulz-obroc 1.2s ease-out; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animiraj-utrip,
+    .animiraj-vstop,
+    .animiraj-pulz {
+      animation: none;
+    }
+  }
+}

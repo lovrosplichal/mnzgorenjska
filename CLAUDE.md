@@ -4,9 +4,11 @@ Navodila za Claude Code pri delu na tem projektu.
 
 ## O projektu
 
-Fantasy football aplikacija za člansko kategorijo 1. Gorenjske nogometne lige (MNZG Kranj). Uporabniki sestavljajo fantasy ekipe iz realnih igralcev, po vsakem krogu **glasujejo/ocenjujejo predstave igralcev**, in glede na povprečne ocene skupnosti zbirajo točke. Tekmujejo na skupni lestvici.
+Fantasy football aplikacija za člansko kategorijo 1. Gorenjske nogometne lige (MNZG Kranj). Uporabniki sestavljajo fantasy ekipe iz realnih igralcev znotraj proračuna in tekmujejo na skupni lestvici.
 
-Ključna razlika od klasičnega fantasyja: točke **ne** temeljijo na uradni statistiki, ampak na glasovanju skupnosti (ocene 1–10 na igralca na krog).
+Točke temeljijo na uradni statistiki iz zapisnikov MNZ Gorenjska. Skupnost z glasovanjem
+določi le tisto, česar zapisnik ne pove: **asistence** in **pozicije** (zapisnik označi le
+vratarja z (V), postave pa našteje po številkah dresov). Prag je 5 glasov.
 
 ## Tehnološki sklop
 
@@ -20,9 +22,11 @@ Lokalni razvoj teče na Supabase CLI stacku v Dockerju (`npx supabase start`).
 
 - `players` → realni igralci, vezani na realni klub (`teams`)
 - `fantasy_teams` → ekipe uporabnikov, `fantasy_roster` → izbrani igralci
-- `rounds` → krogi sezone
-- `ratings` → posamezni glasovi (uporabnik × igralec × krog)
-- `player_scores` → agregirane točke igralca na krog
+- `rounds` → krogi sezone, `matches` → tekme (z izvorom `zapisnik_id`)
+- `appearances` → nastop igralca na tekmi (minute, goli, kartoni, prejeti goli)
+- `goals` → posamezen gol; nosi tudi potrjeno asistenco
+- `assist_votes`, `position_votes` → glasovanje skupnosti (prag v `settings`)
+- `player_scores` → točke igralca na krog (iz pogleda `appearance_points`)
 
 ## Smernice za razvoj
 
