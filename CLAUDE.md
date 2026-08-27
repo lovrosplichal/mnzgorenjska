@@ -14,7 +14,7 @@ Ključna razlika od klasičnega fantasyja: točke **ne** temeljijo na uradni sta
 - Backend / baza / avtentikacija: Supabase (PostgreSQL)
 - Gostovanje: Vercel + Supabase
 
-*(Če se sklad razlikuje od dejanskega stanja repozitorija, sledi dejanskemu stanju in posodobi to datoteko.)*
+Lokalni razvoj teče na Supabase CLI stacku v Dockerju (`npx supabase start`).
 
 ## Glavni koncepti podatkovnega modela
 
@@ -34,7 +34,19 @@ Ključna razlika od klasičnega fantasyja: točke **ne** temeljijo na uradni sta
 ## Ukazi
 
 ```bash
-npm install      # namestitev odvisnosti
-npm run dev      # razvojni strežnik
-npm run build    # produkcijski build
+npm install         # namestitev odvisnosti
+npx supabase start  # lokalna baza (Docker)
+npm run dev         # razvojni strežnik
+npm run build       # produkcijski build
+npm test            # e2e test proti bazi (RLS, glasovanje, točke, lestvica)
+npm run smoke       # izris vseh strani + pravila ekipe, brez brskalnika
 ```
+
+## Preverjanje sprememb
+
+- Po spremembi kode poženi `npm run smoke`.
+- Po spremembi sheme ali RLS poženi še `npm test`.
+- Ob spremembi podatkovnega modela **dodaj novo migracijo** v `supabase/migrations/`;
+  obstoječih migracij ne spreminjaj, ker so že uporabljene.
+- Pravila sestave ekipe so na enem mestu v `src/lib/pravila.js` — spreminjaj jih tam,
+  ne razpršeno po komponentah.
