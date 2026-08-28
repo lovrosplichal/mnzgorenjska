@@ -55,6 +55,15 @@ jobs:
           LIGA: ${{ github.event.inputs.liga || '1601' }}
         run: node scripts/uvoz-zapisnikov.mjs --liga "$LIGA"
 
+      # Samo porocilo: prestop se prepozna po imenu, kar pri soimenjakih lahko
+      # zgresi. Ce se izkaze za zanesljivo, se doda --pisi.
+      - name: Prestopi med klubi (porocilo)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/uvoz-registracij.mjs
+        continue-on-error: true
+
       # Le za igralce, ki pozicije še nimajo (novinci). Obstoječih ne premetava.
       - name: Pozicije novincev
         env:
