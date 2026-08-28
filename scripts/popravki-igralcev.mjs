@@ -44,6 +44,9 @@ const POPRAVKI = [
   { ime: 'Simon Čarman Duran',   pozicija: 'FWD', noviKlub: null },
   // Bor Repič je bil pri drugem klubu — premakni v Eltron Preddvor.
   { ime: 'Bor Repič',            pozicija: null,  noviKlub: 'Preddvor' },
+  // Ročno postavljena vrednost — nastavi tudi value_locked=true, da naslednji
+  // ovrednoti-igralce.mjs ne prepiše.
+  { ime: 'Žiga Dobnikar',        pozicija: null,  noviKlub: null, vrednost: 8.0 },
 ]
 
 // Novi igralci, ki jih uvoz zapisnikov še ni zajel (npr. sveži prestopi).
@@ -123,7 +126,7 @@ let opozoril = 0
 for (const p of POPRAVKI) {
   const { data: kandidati, error: eI } = await db
     .from('player_overview')
-    .select('id, full_name, team_id, team_name, position, position_source')
+    .select('id, full_name, team_id, team_name, position, position_source, value')
     .ilike('full_name', `%${p.ime}%`)
   if (eI) {
     console.log(`✗ ${p.ime}: napaka pri iskanju — ${eI.message}`)
@@ -165,6 +168,15 @@ for (const p of POPRAVKI) {
     if (klub.id !== igralec.team_id) {
       spremembe.team_id = klub.id
       opis.push(`klub ${igralec.team_name} → ${klub.name}`)
+    }
+  }
+
+  if (p.vrednost != null) {
+    const nova = Number(p.vrednost)
+    if (Number(igralec.value) !== nova) {
+      spremembe.value = nova
+      spremembe.value_locked = true
+      opis.push(`vrednost ${igralec.value} → ${nova} (zaklenjena)`)
     }
   }
 
