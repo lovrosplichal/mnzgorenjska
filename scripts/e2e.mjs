@@ -33,6 +33,14 @@ if (!ANON) {
 
 const fresh = () => createClient(BASE, ANON, { auth: { persistSession: false } })
 
+// Testi tečejo skozi RLS z javnim ključem. Servisni ključ rabimo le za
+// pospravljanje na koncu: glasovi potrdijo asistenco in pozicijo, kar navaden
+// uporabnik ne sme razveljaviti.
+const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
+const admin = SERVICE
+  ? createClient(BASE, SERVICE, { auth: { persistSession: false } })
+  : null
+
 let fails = 0
 const ok = (label, cond, extra = '') => {
   console.log(`${cond ? 'PASS' : 'FAIL'}  ${label}${extra ? ' — ' + extra : ''}`)
@@ -319,12 +327,44 @@ ok(
 const { data: krog } = await anon.from('rounds').select('id').limit(1).single()
 await u.c.rpc('recompute_round_scores', { p_round_id: krog.id })
 
-const prviIgralci = izbrani.filter((s) => s.is_starter).map((s) => s.player_id)
+// Rok tega kroga je davno mimo, zato ekipa brez posnetka v njem nima postave.
+// Tako je tudi prav — kdor se pridruži pozneje, za odigrane kroge ne dobi točk.
+// Za preizkus lestvice krog izrecno zaklenemo, kar naredi posnetek postave.
+if (admin) {
+  const { data: predZaklepom } = await anon
+    .from('fantasy_team_standings')
+    .select('total_points')
+    .eq('fantasy_team_id', ekipa.id)
+    .single()
+  ok(
+    'brez posnetka pretekli krog ne prinese točk',
+    Number(predZaklepom?.total_points) === 0,
+    `${predZaklepom?.total_points}`,
+  )
+  await admin.rpc('zakleni_krog', { p_round_id: krog.id })
+} else {
+  console.log('OPOMBA  brez servisnega ključa preskočen preizkus posnetka postave')
+}
+
+// Pričakovana vsota: točke zaklenjenega kroga za postavo po samodejnih
+// menjavah, pomnožene s kapetanovim množiteljem. Lestvica sme šteti samo
+// zaklenjeni krog, ne vseh krogov, v katerih so ti igralci kdaj nastopili.
+const { data: ucinkovita } = await (admin ?? u.c).rpc('ucinkovita_postava', {
+  p_team: ekipa.id,
+  p_round: krog.id,
+})
 const { data: tocke } = await u.c
   .from('player_scores')
-  .select('points')
-  .in('player_id', prviIgralci)
-const pricakovanaVsota = (tocke ?? []).reduce((v, s) => v + Number(s.points), 0)
+  .select('player_id, points')
+  .eq('round_id', krog.id)
+  .in(
+    'player_id',
+    (ucinkovita ?? []).map((x) => x.player_id),
+  )
+const pricakovanaVsota = (ucinkovita ?? []).reduce((v, x) => {
+  const t = (tocke ?? []).find((p) => p.player_id === x.player_id)
+  return v + Number(t?.points ?? 0) * x.mnozitelj
+}, 0)
 
 const { data: lestvica } = await anon
   .from('fantasy_team_standings')
@@ -344,6 +384,19 @@ await u.c.from('fantasy_teams').delete().eq('id', ekipa.id)
 for (const usr of users) {
   await usr.c.from('assist_votes').delete().eq('voter_id', usr.id)
   await usr.c.from('position_votes').delete().eq('voter_id', usr.id)
+}
+// Glasovi so potrdili asistenco in pozicijo; brez povrnitve bi naslednji zagon
+// tekel nad podatki, ki jih je pustil prejšnji, in test asistence bi padel.
+if (admin) {
+  await admin.from('goals').update({ assist_player_id: null }).eq('id', gol.id)
+  await admin
+    .from('players')
+    .update({ position: null, position_source: 'neznano' })
+    .eq('id', brezPozicije.id)
+} else {
+  console.log(
+    'OPOMBA  brez SUPABASE_SERVICE_ROLE_KEY potrjena asistenca in pozicija ostaneta — naslednji zagon naj uporabi drug gol',
+  )
 }
 const { data: poCiscenju } = await anon
   .from('fantasy_team_standings')
