@@ -2,12 +2,14 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { prikazniIme, razredPozicije, KRATKA_POZICIJA } from '../lib/pomozno'
+import Grb from '../components/Grb'
 
 const PRAG = 5
 
 export default function Glasovanje() {
   const { session, loading } = useAuth()
   const [tekme, setTekme] = useState([])
+  const [krogId, setKrogId] = useState(null)
   const [tekmaId, setTekmaId] = useState(null)
   const [goli, setGoli] = useState([])
   const [igralci, setIgralci] = useState([])
@@ -17,23 +19,32 @@ export default function Glasovanje() {
   const [napaka, setNapaka] = useState(null)
   const [pravkarOddan, setPravkarOddan] = useState(null)
 
-  // seznam tekem, ki imajo gole brez potrjene asistence
+  // Vse odigrane tekme naenkrat — iz njih sestavimo kroge, da izbira teče po
+  // korakih (krog → tekma) in ne po enem dolgem spustnem seznamu.
   useEffect(() => {
     async function nalozi() {
       const { data, error } = await supabase
-        .from('matches')
-        .select(
-          'id, played_on, home_goals, away_goals, home:home_team_id(name, short_name), away:away_team_id(name, short_name), rounds(season, number)',
-        )
+        .from('match_assist_status')
+        .select('*')
         .order('played_on', { ascending: false })
-        .limit(40)
       if (error) setNapaka(error.message)
       setTekme(data ?? [])
-      setTekmaId(data?.[0]?.id ?? null)
+
+      // Odpremo pri najnovejšem krogu, ki še čaka na asistence.
+      const cakajoc = (data ?? []).find((t) => t.brez_asistence > 0)
+      setKrogId(cakajoc?.round_id ?? data?.[0]?.round_id ?? null)
       setNalaganje(false)
     }
     nalozi()
   }, [])
+
+  // Ob menjavi kroga izberemo prvo tekmo, ki še potrebuje glasove.
+  useEffect(() => {
+    if (!krogId) return
+    const vKrogu = tekme.filter((t) => t.round_id === krogId)
+    const cakajoca = vKrogu.find((t) => t.brez_asistence > 0) ?? vKrogu[0]
+    setTekmaId(cakajoca?.match_id ?? null)
+  }, [krogId, tekme])
 
   // goli izbrane tekme + kandidati + glasovi
   useEffect(() => {
@@ -96,8 +107,31 @@ export default function Glasovanje() {
     }
   }, [tekmaId, session])
 
+  // Krogi z odigranimi tekmami; značka pove, koliko golov v krogu še čaka.
+  const krogi = useMemo(() => {
+    const m = new Map()
+    for (const t of tekme) {
+      const k = m.get(t.round_id) ?? {
+        id: t.round_id,
+        number: t.round_number,
+        season: t.season,
+        brez_asistence: 0,
+      }
+      k.brez_asistence += t.brez_asistence
+      m.set(t.round_id, k)
+    }
+    return [...m.values()].sort(
+      (a, b) => b.season.localeCompare(a.season) || b.number - a.number,
+    )
+  }, [tekme])
+
+  const tekmeVKrogu = useMemo(
+    () => tekme.filter((t) => t.round_id === krogId),
+    [tekme, krogId],
+  )
+
   const tekma = useMemo(
-    () => tekme.find((t) => t.id === tekmaId),
+    () => tekme.find((t) => t.match_id === tekmaId),
     [tekme, tekmaId],
   )
 
@@ -158,23 +192,74 @@ export default function Glasovanje() {
         </p>
       </header>
 
-      {/* izbira tekme */}
-      <div className="kartica p-3">
-        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Tekma
-        </label>
-        <select
-          value={tekmaId ?? ''}
-          onChange={(e) => setTekmaId(Number(e.target.value))}
-          className="mt-1 w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-slate-100"
-        >
-          {tekme.map((t) => (
-            <option key={t.id} value={t.id}>
-              {t.rounds?.number}. krog — {t.home?.name} {t.home_goals}:
-              {t.away_goals} {t.away?.name}
-            </option>
+      {/* 1. korak: krog */}
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">
+          1. Izberi krog
+        </h2>
+        <div className="flex gap-1.5 overflow-x-auto pb-1">
+          {krogi.map((k) => (
+            <button
+              key={k.id}
+              onClick={() => setKrogId(k.id)}
+              className={`shrink-0 rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                krogId === k.id
+                  ? 'bg-gnl-500 text-slate-950'
+                  : 'kartica text-slate-300'
+              }`}
+            >
+              {k.number}. krog
+              {k.brez_asistence > 0 && (
+                <span
+                  className={`ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-black ${
+                    krogId === k.id
+                      ? 'bg-slate-950/20 text-slate-950'
+                      : 'bg-amber-400/20 text-amber-300'
+                  }`}
+                >
+                  {k.brez_asistence}
+                </span>
+              )}
+            </button>
           ))}
-        </select>
+        </div>
+      </div>
+
+      {/* 2. korak: tekma v krogu */}
+      <div className="space-y-2">
+        <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">
+          2. Izberi tekmo
+        </h2>
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {tekmeVKrogu.map((t) => (
+            <li key={t.match_id}>
+              <button
+                onClick={() => setTekmaId(t.match_id)}
+                className={`flex w-full items-center gap-2 rounded-2xl p-2.5 text-left transition ${
+                  tekmaId === t.match_id
+                    ? 'bg-gnl-500/15 ring-1 ring-gnl-400/50'
+                    : 'kartica kartica-hover'
+                }`}
+              >
+                <Grb ime={t.home_name} kratko={t.home_short} logo={t.home_logo} velikost={22} />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                  {t.home_short} – {t.away_short}
+                </span>
+                <Grb ime={t.away_name} kratko={t.away_short} logo={t.away_logo} velikost={22} />
+                <span className="rounded-lg bg-slate-950/60 px-2 py-0.5 text-sm font-black tabular-nums">
+                  {t.home_goals}:{t.away_goals}
+                </span>
+                {t.brez_asistence > 0 ? (
+                  <span className="znacka bg-amber-400/20 text-amber-300">
+                    {t.brez_asistence}
+                  </span>
+                ) : (
+                  <span className="znacka bg-gnl-400/20 text-gnl-200">✓</span>
+                )}
+              </button>
+            </li>
+          ))}
+        </ul>
       </div>
 
       {!session && (
@@ -184,12 +269,18 @@ export default function Glasovanje() {
       )}
 
       {tekma && (
-        <div className="flex items-center justify-center gap-4 rounded-2xl bg-gradient-to-b from-gnl-800/50 to-slate-900/50 p-5 text-center ring-1 ring-white/10">
-          <span className="flex-1 text-right font-bold">{tekma.home?.name}</span>
-          <span className="rounded-xl bg-slate-950 px-4 py-2 text-2xl font-black tabular-nums">
+        <div className="flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-gnl-800/50 to-slate-900/50 p-3 text-center ring-1 ring-white/10 sm:gap-4 sm:p-5">
+          <Grb ime={tekma.home_name} kratko={tekma.home_short} logo={tekma.home_logo} velikost={32} />
+          <span className="min-w-0 flex-1 text-right text-sm font-bold sm:text-base">
+            {tekma.home_name}
+          </span>
+          <span className="rounded-xl bg-slate-950 px-3 py-2 text-xl font-black tabular-nums sm:px-4 sm:text-2xl">
             {tekma.home_goals} : {tekma.away_goals}
           </span>
-          <span className="flex-1 text-left font-bold">{tekma.away?.name}</span>
+          <span className="min-w-0 flex-1 text-left text-sm font-bold sm:text-base">
+            {tekma.away_name}
+          </span>
+          <Grb ime={tekma.away_name} kratko={tekma.away_short} logo={tekma.away_logo} velikost={32} />
         </div>
       )}
 
@@ -246,8 +337,12 @@ function GolKartica({
   const stGlasov = Object.fromEntries(glasovi.map((v) => [v.player_id, v.votes]))
   const vodilni = glasovi[0]
 
-  const ekipa =
-    gol.team_id === tekma?.home?.id ? tekma?.home : tekma?.away
+  const domaci = gol.team_id === tekma?.home_team_id
+  const ekipa = {
+    name: domaci ? tekma?.home_name : tekma?.away_name,
+    short_name: domaci ? tekma?.home_short : tekma?.away_short,
+    logo_url: domaci ? tekma?.home_logo : tekma?.away_logo,
+  }
 
   if (gol.is_own_goal)
     return (

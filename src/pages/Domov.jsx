@@ -48,14 +48,22 @@ export default function Domov() {
       <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-gnl-800/60 via-slate-900 to-slate-950 p-8 ring-1 ring-white/10">
         <div className="igrisce absolute inset-0 opacity-40" aria-hidden />
         <div className="relative space-y-4">
+          <img
+            src="/logo/slff-grb.png"
+            alt="SLFF — Sunday League Fantasy Football"
+            className="h-24 w-24 drop-shadow-xl sm:h-32 sm:w-32"
+          />
           <span className="znacka bg-gnl-400/20 text-gnl-200">
             1. Gorenjska nogometna liga
           </span>
           <h1 className="text-4xl font-black leading-tight naslov sm:text-5xl">
-            Sestavi ekipo.
+            Sunday League
             <br />
-            Zberi točke. Zmagaj.
+            Fantasy Football
           </h1>
+          <p className="text-lg font-semibold text-gnl-300">
+            Sestavi ekipo. Zberi točke. Zmagaj.
+          </p>
           <p className="max-w-xl text-slate-300">
             Točke prihajajo iz uradnih zapisnikov MNZ Gorenjska — goli, minute,
             ohranjene mreže, kartoni. Vse razen asistenc, ki jih določi
@@ -153,6 +161,38 @@ export default function Domov() {
           </ul>
         </section>
       )}
+
+      {/* potek igre */}
+      <section className="space-y-3">
+        <h2 className="text-xl font-bold">Kako igraš</h2>
+        <ol className="grid gap-3 sm:grid-cols-2">
+          {[
+            [
+              '1. Registracija',
+              'Ustvari račun z e-pošto in geslom ter si izmisli ime ekipe.',
+            ],
+            [
+              '2. Sestavi kader',
+              'Na igrišču izbereš 15 igralcev: 2 vratarja, 5 branilcev, 5 vezistov in 3 napadalce — največ 3 iz istega kluba, znotraj proračuna 100.',
+            ],
+            [
+              '3. Postavi enajsterico',
+              'Enajst gre na igrišče, štirje na klop. Kapetan prinese trojne točke; če ne igra, trak prevzame namestnik.',
+            ],
+            [
+              '4. Po vsakem krogu',
+              'Točke se izračunajo iz zapisnikov. Igralca brez minut samodejno zamenja rezervni iste pozicije, enkrat na sezono pa lahko s Klop+ v točke šteješ vso klop.',
+            ],
+          ].map(([naslov, opis]) => (
+            <li key={naslov} className="kartica p-4">
+              <h3 className="mb-1 text-sm font-bold uppercase tracking-wide text-gnl-300">
+                {naslov}
+              </h3>
+              <p className="text-sm text-slate-300">{opis}</p>
+            </li>
+          ))}
+        </ol>
+      </section>
 
       {/* pravila */}
       <section className="space-y-3">

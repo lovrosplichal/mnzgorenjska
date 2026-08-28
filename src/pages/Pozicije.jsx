@@ -17,7 +17,9 @@ export default function Pozicije() {
   const [mojiGlasovi, setMojiGlasovi] = useState({}) // player_id -> position
   const [nalaganje, setNalaganje] = useState(true)
   const [napaka, setNapaka] = useState(null)
-  const [samoNeznane, setSamoNeznane] = useState(true)
+  // Privzeto pokažemo tiste, ki jih je vredno popraviti: brez pozicije in
+  // ugibanja iz statistike. Potrjene iz zapisnika glasovanje itak ne premakne.
+  const [samoNepotrjene, setSamoNepotrjene] = useState(true)
 
   useEffect(() => {
     supabase
@@ -119,11 +121,18 @@ export default function Pozicije() {
   }
 
   const vidni = useMemo(
-    () => (samoNeznane ? igralci.filter((i) => !i.position) : igralci),
-    [igralci, samoNeznane],
+    () =>
+      samoNepotrjene
+        ? igralci.filter(
+            (i) => !i.position || i.position_source === 'ugibanje',
+          )
+        : igralci,
+    [igralci, samoNepotrjene],
   )
 
-  const stNeznanih = igralci.filter((i) => !i.position).length
+  const stNepotrjenih = igralci.filter(
+    (i) => !i.position || i.position_source === 'ugibanje',
+  ).length
 
   if (loading || nalaganje)
     return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
@@ -161,11 +170,11 @@ export default function Pozicije() {
         <label className="flex items-center gap-2 pb-2 text-sm text-slate-300">
           <input
             type="checkbox"
-            checked={samoNeznane}
-            onChange={(e) => setSamoNeznane(e.target.checked)}
+            checked={samoNepotrjene}
+            onChange={(e) => setSamoNepotrjene(e.target.checked)}
             className="h-4 w-4 rounded accent-gnl-400"
           />
-          Samo neznane ({stNeznanih})
+          Samo nepotrjene ({stNepotrjenih})
         </label>
       </div>
 
@@ -177,7 +186,7 @@ export default function Pozicije() {
 
       {vidni.length === 0 ? (
         <p className="kartica p-6 text-center text-slate-400">
-          {samoNeznane
+          {samoNepotrjene
             ? 'Vsi igralci tega kluba imajo potrjeno pozicijo. 🎉'
             : 'Ni igralcev.'}
         </p>
@@ -202,8 +211,12 @@ export default function Pozicije() {
 }
 
 function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
-  const potrjeno = Boolean(igralec.position)
+  // Zapisnika in ročnega vnosa administratorja glasovanje ne premakne; vse
+  // ostalo (neznano, ugibanje, prejšnje glasovanje) je mogoče popraviti.
   const izZapisnika = igralec.position_source === 'zapisnik'
+  const zaklenjeno = izZapisnika || igralec.position_source === 'admin'
+  const ugibano = igralec.position_source === 'ugibanje'
+  const potrjeno = Boolean(igralec.position)
   const vodilna = Object.entries(glasovi).sort((a, b) => b[1] - a[1])[0]
 
   return (
@@ -231,16 +244,27 @@ function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
             title={
               izZapisnika
                 ? 'Iz zapisnika — vratar je označen z (V)'
-                : 'Potrdila skupnost'
+                : ugibano
+                  ? 'Ugibanje iz lanske statistike — glasovanje ga povozi'
+                  : 'Potrdila skupnost'
             }
           >
             {IKONA[igralec.position]} {IME_POZICIJE[igralec.position]}
-            {izZapisnika && ' ·  zapisnik'}
+            {izZapisnika && ' · zapisnik'}
+            {ugibano && ' · ugibanje'}
           </span>
         )}
       </div>
 
-      {!potrjeno && (
+      {!zaklenjeno && potrjeno && (
+        <p className="mt-2 text-xs text-slate-500">
+          {ugibano
+            ? 'Pozicija je ugibanje iz statistike — če ni prav, klikni pravo.'
+            : 'Pozicijo je določila skupnost — z glasovi jo je mogoče popraviti.'}
+        </p>
+      )}
+
+      {!zaklenjeno && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {POZICIJE.map((p) => {
             const n = glasovi[p] ?? 0
