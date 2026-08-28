@@ -76,19 +76,63 @@ export default function Igralci() {
   useEffect(() => {
     if (!sezona) return
     setNalaganje(true)
-    supabase
-      .from('player_season_standings')
-      .select(
-        'id, full_name, position, team_id, team_name, team_short, team_logo, value, season, points, form, last_round, points_per_match, points_per_value, owners, goals, minutes, matches, clean_sheets, rank',
-      )
-      .eq('season', sezona)
-      .order('points', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) setNapaka(error.message)
-        else setIgralci(data ?? [])
+    const jeTekoca = sezone.find((s) => s.season === sezona)?.tekoca
+    ;(async () => {
+      const { data: standings, error } = await supabase
+        .from('player_season_standings')
+        .select(
+          'id, full_name, position, team_id, team_name, team_short, team_logo, value, season, points, form, last_round, points_per_match, points_per_value, owners, goals, minutes, matches, clean_sheets, rank',
+        )
+        .eq('season', sezona)
+        .order('points', { ascending: false })
+      if (error) {
+        setNapaka(error.message)
         setNalaganje(false)
-      })
-  }, [sezona])
+        return
+      }
+
+      // Za TEKOČO sezono pokažimo tudi na novo registrirane igralce, ki
+      // še nimajo nastopov — sicer novi igralec (npr. sveži prestop) ne
+      // bo viden na tej strani, dokler ne odigra prve tekme.
+      let vsi = standings ?? []
+      if (jeTekoca) {
+        const { data: aktivni } = await supabase
+          .from('players')
+          .select(
+            'id, full_name, position, team_id, value, active, teams!inner(name, short_name, logo_url)',
+          )
+          .eq('active', true)
+        const znani = new Set(vsi.map((i) => i.id))
+        const brezStatistike = (aktivni ?? [])
+          .filter((p) => !znani.has(p.id))
+          .map((p) => ({
+            id: p.id,
+            full_name: p.full_name,
+            position: p.position,
+            team_id: p.team_id,
+            team_name: p.teams?.name,
+            team_short: p.teams?.short_name,
+            team_logo: p.teams?.logo_url,
+            value: p.value,
+            season: sezona,
+            points: 0,
+            form: 0,
+            last_round: 0,
+            points_per_match: 0,
+            points_per_value: 0,
+            owners: 0,
+            goals: 0,
+            minutes: 0,
+            matches: 0,
+            clean_sheets: 0,
+            rank: null,
+          }))
+        vsi = [...vsi, ...brezStatistike]
+      }
+      setIgralci(vsi)
+      setNalaganje(false)
+    })()
+  }, [sezona, sezone])
 
   const klubi = useMemo(() => {
     const m = new Map()
