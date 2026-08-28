@@ -1,0 +1,63 @@
+name: Uvoz zapisnikov
+
+# Zapisniki MNZ Gorenjska se objavijo nekaj ur do nekaj dni po tekmi, zato
+# pobiramo enkrat dnevno. Uvoz je idempotenten: tekma z istim zapisnikom se
+# posodobi, ne podvoji. Točke krogov preračuna že sam uvoz, cene pa premakne
+# borza v bazi (pg_cron, 3:30).
+on:
+  schedule:
+    - cron: '0 5 * * *' # 5:00 UTC = 7:00 po naše
+  workflow_dispatch:
+    inputs:
+      liga:
+        description: 'ID lige na mnzgkranj.si'
+        required: false
+        default: '1601'
+
+concurrency:
+  group: uvoz
+  cancel-in-progress: false
+
+jobs:
+  uvoz:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # Predpomnilnik prihrani ponovno pobiranje že prebranih zapisnikov —
+      # tako ob vsakem zagonu s strani MNZ potegnemo le nove tekme.
+      - name: Predpomnilnik zapisnikov
+        uses: actions/cache@v4
+        with:
+          path: scripts/.predpomnilnik
+          key: zapisniki-${{ github.run_id }}
+          restore-keys: zapisniki-
+
+      - name: Razpored (novi ali prestavljeni krogi)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LIGA: ${{ github.event.inputs.liga || '1601' }}
+        run: node scripts/uvoz-razporeda.mjs --liga "$LIGA" --pisi
+
+      - name: Zapisniki in točke
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LIGA: ${{ github.event.inputs.liga || '1601' }}
+        run: node scripts/uvoz-zapisnikov.mjs --liga "$LIGA"
+
+      # Le za igralce, ki pozicije še nimajo (novinci). Obstoječih ne premetava.
+      - name: Pozicije novincev
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/ugani-pozicije.mjs --pisi --samo-nove

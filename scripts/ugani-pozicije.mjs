@@ -50,6 +50,10 @@ if (!SERVICE) {
   process.exit(1)
 }
 const pisi = process.argv.includes('--pisi')
+// V rednem (samodejnem) zagonu nočemo, da bi se pozicija igralca tedensko
+// premetavala, ko se statistika nabira. S to zastavico skript le zapolni tiste,
+// ki pozicije še nimajo — tipično novinci, ki so prišli med sezono.
+const samoNove = process.argv.includes('--samo-nove')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
 // --- podatki ---------------------------------------------------------------
@@ -77,6 +81,7 @@ const poKlubih = new Map()
 for (const p of igralci) {
   // vratarji so znani iz zapisnika, administratorjevih in izglasovanih se ne dotikamo
   if (['zapisnik', 'admin', 'glasovanje'].includes(p.position_source)) continue
+  if (samoNove && p.position) continue
   if ((p.minutes ?? 0) < MIN_MINUT) continue
   const k = poKlubih.get(p.team_id) ?? []
   const kart = poIgralcu.get(p.id) ?? { rumeni: 0, rdeci: 0 }
