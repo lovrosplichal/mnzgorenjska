@@ -31,7 +31,9 @@ export default function MojaEkipa() {
   const [izbrani, setIzbrani] = useState([])
   const [krogi, setKrogi] = useState([])
   const [naslednjiKrog, setNaslednjiKrog] = useState(null)
-  const [pripomocek, setPripomocek] = useState(null)
+  const [pripomocki, setPripomocki] = useState([])
+  const [zaklenjenaPostava, setZaklenjenaPostava] = useState(null)
+  const [pravila, setPravila] = useState({ prosti: 3, kazen: 4 })
   const [izbranKrog, setIzbranKrog] = useState('')
   const [nalaganje, setNalaganje] = useState(true)
   const [sporocilo, setSporocilo] = useState(null)
@@ -71,7 +73,7 @@ export default function MojaEkipa() {
 
       const { data: naslednji } = await supabase
         .from('naslednji_krog')
-        .select('number, played_on, deadline_at')
+        .select('id, number, played_on, deadline_at')
         .maybeSingle()
       setNaslednjiKrog(naslednji ?? null)
 
@@ -90,13 +92,38 @@ export default function MojaEkipa() {
           .eq('fantasy_team_id', moja.id)
         setIzbrani(nabor ?? [])
 
-        const { data: chip } = await supabase
+        const { data: chips } = await supabase
           .from('fantasy_chips')
           .select('chip, round_id')
           .eq('fantasy_team_id', moja.id)
-          .eq('chip', 'klop_plus')
-          .maybeSingle()
-        setPripomocek(chip ?? null)
+        setPripomocki(chips ?? [])
+
+        // Zadnja zaklenjena postava je izhodišče za štetje prestopov.
+        const { data: zadnjiPosnetek } = await supabase
+          .from('fantasy_lineups')
+          .select('round_id, player_id')
+          .eq('fantasy_team_id', moja.id)
+          .order('round_id', { ascending: false })
+        if (zadnjiPosnetek?.length) {
+          const zadnjiKrog = zadnjiPosnetek[0].round_id
+          setZaklenjenaPostava(
+            zadnjiPosnetek
+              .filter((v) => v.round_id === zadnjiKrog)
+              .map((v) => v.player_id),
+          )
+        }
+      }
+
+      const { data: nast } = await supabase
+        .from('settings')
+        .select('key, value')
+        .in('key', ['prosti_prestopi', 'kazen_prestopa'])
+      if (nast?.length) {
+        const m = Object.fromEntries(nast.map((n) => [n.key, Number(n.value)]))
+        setPravila({
+          prosti: m.prosti_prestopi ?? 3,
+          kazen: m.kazen_prestopa ?? 4,
+        })
       }
       setNalaganje(false)
     }
@@ -252,18 +279,22 @@ export default function MojaEkipa() {
     setSporocilo('Ekipa je shranjena. 💾')
   }
 
-  async function igrajKlopPlus() {
+  async function vloziPripomocek(chip, krogId) {
     setNapaka(null)
     if (!ekipa?.id) return setNapaka('Najprej shrani ekipo.')
-    if (!izbranKrog) return setNapaka('Izberi krog, v katerem naj velja Klop+.')
+    if (!krogId) return setNapaka('Izberi krog, v katerem naj pripomoček velja.')
     const { error } = await supabase.from('fantasy_chips').insert({
       fantasy_team_id: ekipa.id,
-      chip: 'klop_plus',
-      round_id: Number(izbranKrog),
+      chip,
+      round_id: Number(krogId),
     })
     if (error) return setNapaka(error.message)
-    setPripomocek({ chip: 'klop_plus', round_id: Number(izbranKrog) })
-    setSporocilo('Klop+ je vložen. 🎟️')
+    setPripomocki([...pripomocki, { chip, round_id: Number(krogId) }])
+    setSporocilo(
+      chip === 'wildcard'
+        ? 'Wildcard je vložen — prestopi v tem krogu so brezplačni. 🃏'
+        : 'Klop+ je vložen. 🎟️',
+    )
   }
 
   if (loading || nalaganje)
@@ -283,7 +314,20 @@ export default function MojaEkipa() {
     return true
   })
 
-  const krogPripomocka = krogi.find((k) => k.id === pripomocek?.round_id)
+  const klopPlus = pripomocki.find((c) => c.chip === 'klop_plus')
+  const wildcard = pripomocki.find((c) => c.chip === 'wildcard')
+  const krogPripomocka = krogi.find((k) => k.id === klopPlus?.round_id)
+  const krogWildcard = krogi.find((k) => k.id === wildcard?.round_id)
+
+  // Prestop je igralec, ki ga v zadnji zaklenjeni postavi ni bilo.
+  const prestopi = zaklenjenaPostava
+    ? izbrani.filter((s) => !zaklenjenaPostava.includes(s.player_id)).length
+    : 0
+  const wildcardVelja =
+    wildcard && naslednjiKrog && wildcard.round_id === naslednjiKrog.id
+  const kazen = wildcardVelja
+    ? 0
+    : Math.max(0, prestopi - pravila.prosti) * pravila.kazen
 
   const trg = (
     <TrgIgralcev
@@ -308,6 +352,28 @@ export default function MojaEkipa() {
       <h1 className="text-2xl font-black naslov sm:text-3xl">Moja ekipa</h1>
 
       {naslednjiKrog && <Rok krog={naslednjiKrog} />}
+
+      {zaklenjenaPostava && (
+        <div className="kartica flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
+          <span className="font-semibold">
+            Prestopi: {prestopi}/{pravila.prosti}
+          </span>
+          {wildcardVelja ? (
+            <span className="znacka bg-gnl-400/20 text-gnl-200">
+              wildcard — brez kazni
+            </span>
+          ) : kazen > 0 ? (
+            <span className="text-rose-400">
+              odbitek {kazen} točk v tem krogu
+            </span>
+          ) : (
+            <span className="text-slate-400">
+              še {pravila.prosti - prestopi} brezplačnih, nato −{pravila.kazen}{' '}
+              za vsakega
+            </span>
+          )}
+        </div>
+      )}
 
       {/* proračun in kvote */}
       <div className="kartica grid grid-cols-3 gap-2 p-3 sm:gap-3 sm:p-4">
@@ -426,7 +492,10 @@ export default function MojaEkipa() {
                       </option>
                     ))}
                   </select>
-                  <button onClick={igrajKlopPlus} className="gumb-tih">
+                  <button
+                    onClick={() => vloziPripomocek('klop_plus', izbranKrog)}
+                    className="gumb-tih"
+                  >
                     Vloži
                   </button>
                 </div>
@@ -434,6 +503,29 @@ export default function MojaEkipa() {
               <p className="text-xs text-slate-500">
                 Enkrat na sezono: v izbranem krogu se prištejejo še točke vseh
                 štirih rezervnih igralcev.
+              </p>
+
+              <h3 className="pt-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+                Pripomoček Wildcard
+              </h3>
+              {krogWildcard ? (
+                <p className="text-sm text-gnl-300">
+                  Vložen za {krogWildcard.number}. krog — prestopi v njem so
+                  brezplačni.
+                </p>
+              ) : (
+                <button
+                  onClick={() =>
+                    vloziPripomocek('wildcard', naslednjiKrog?.id ?? izbranKrog)
+                  }
+                  className="gumb-tih w-full"
+                >
+                  Vloži za {naslednjiKrog ? `${naslednjiKrog.number}. krog` : 'naslednji krog'}
+                </button>
+              )}
+              <p className="text-xs text-slate-500">
+                Enkrat na sezono: v tem krogu lahko zamenjaš kolikor igralcev
+                hočeš, brez odbitka točk.
               </p>
             </div>
           </section>

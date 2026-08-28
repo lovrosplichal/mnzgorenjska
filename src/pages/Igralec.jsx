@@ -20,6 +20,7 @@ export default function Igralec() {
   const [igralec, setIgralec] = useState(null)
   const [krogi, setKrogi] = useState([])
   const [cene, setCene] = useState([])
+  const [tekme, setTekme] = useState([])
   const [glasovi, setGlasovi] = useState({})
   const [mojGlas, setMojGlas] = useState(null)
   const [prijava, setPrijava] = useState(false)
@@ -43,7 +44,7 @@ export default function Igralec() {
       }
       setIgralec(p)
 
-      const [{ data: k }, { data: c }, { data: g }] = await Promise.all([
+      const [{ data: k }, { data: c }, { data: g }, { data: t }] = await Promise.all([
         supabase
           .from('player_scores')
           .select('points, rounds(number, season, played_on)')
@@ -60,10 +61,20 @@ export default function Igralec() {
           .from('position_vote_counts')
           .select('position, votes')
           .eq('player_id', id),
+        // Naslednje tekme kluba — pomaga pri odločitvi, koga vzeti.
+        p?.team_id
+          ? supabase
+              .from('prihodnje_tekme')
+              .select('round_number, played_on, opponent_short, opponent_name, opponent_logo, doma')
+              .eq('team_id', p.team_id)
+              .order('played_on')
+              .limit(5)
+          : Promise.resolve({ data: [] }),
       ])
       if (preklican) return
       setKrogi(k ?? [])
       setCene(c ?? [])
+      setTekme(t ?? [])
       setGlasovi(Object.fromEntries((g ?? []).map((v) => [v.position, v.votes])))
 
       if (session) {
@@ -227,6 +238,37 @@ export default function Igralec() {
         )}
         {sporocilo && <p className="text-sm text-gnl-300">{sporocilo}</p>}
       </section>
+
+      {/* prihodnji nasprotniki */}
+      {tekme.length > 0 && (
+        <section className="kartica p-4">
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">
+            Naslednje tekme
+          </h2>
+          <ul className="flex flex-wrap gap-2">
+            {tekme.map((t, n) => (
+              <li
+                key={n}
+                className="flex items-center gap-2 rounded-xl bg-white/5 px-3 py-2 text-sm"
+                title={`${t.round_number}. krog — ${t.doma ? 'doma' : 'v gosteh'} proti ${t.opponent_name}`}
+              >
+                <Grb
+                  ime={t.opponent_name}
+                  kratko={t.opponent_short}
+                  logo={t.opponent_logo}
+                  velikost={20}
+                />
+                <span className="font-semibold">{t.opponent_short}</span>
+                <span
+                  className={`text-xs ${t.doma ? 'text-gnl-300' : 'text-slate-500'}`}
+                >
+                  {t.doma ? 'D' : 'G'}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/* zadnji krogi */}
       {krogi.length > 0 && (
