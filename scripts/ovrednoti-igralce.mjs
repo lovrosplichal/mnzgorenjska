@@ -53,7 +53,8 @@ function arg(ime, privzeto = null) {
 }
 
 const env = izEnv()
-const BASE = env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:54321'
+const BASE =
+  process.env.SUPABASE_URL ?? env.VITE_SUPABASE_URL ?? 'http://127.0.0.1:54321'
 const SERVICE = process.env.SUPABASE_SERVICE_ROLE_KEY
 if (!SERVICE) {
   console.error('Manjka SUPABASE_SERVICE_ROLE_KEY (npx supabase status)')
