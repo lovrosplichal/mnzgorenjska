@@ -4,7 +4,7 @@ import { useAuth } from '../lib/useAuth'
 import { prikazniIme, razredPozicije, KRATKA_POZICIJA } from '../lib/pomozno'
 import Grb from '../components/Grb'
 
-const PRAG = 5
+const PRAG = 3
 
 export default function Glasovanje() {
   const { session, loading } = useAuth()

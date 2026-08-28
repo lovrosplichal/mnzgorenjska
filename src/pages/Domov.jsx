@@ -295,7 +295,7 @@ export default function Domov() {
                     {stat.brezAsistence} golov brez asistence
                   </div>
                   <div className="text-sm text-slate-400">
-                    Povej, kdo je podal — 5 glasov potrdi
+                    Povej, kdo je podal — 3 glasovi potrdijo
                   </div>
                 </div>
               </Link>
