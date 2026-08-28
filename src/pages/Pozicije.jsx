@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { prikazniIme, IME_POZICIJE, KRATKA_POZICIJA } from '../lib/pomozno'
+import Grb from '../components/Grb'
+import { Link } from 'react-router-dom'
 
 const PRAG = 5
 const POZICIJE = ['GK', 'DEF', 'MID', 'FWD']
@@ -41,7 +43,7 @@ export default function Pozicije() {
       const { data: p } = await supabase
         .from('player_overview')
         .select(
-          'id, full_name, position, position_source, shirt_number, minutes, goals, matches, clean_sheets',
+          'id, full_name, position, position_source, shirt_number, minutes, goals, matches, clean_sheets, team_name, team_short, team_logo',
         )
         .eq('team_id', klubId)
         .order('minutes', { ascending: false })
@@ -222,15 +224,24 @@ function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
   return (
     <li className="kartica kartica-hover p-4">
       <div className="flex flex-wrap items-center gap-3">
+        <Grb
+          ime={igralec.team_name}
+          kratko={igralec.team_short}
+          logo={igralec.team_logo}
+          velikost={28}
+        />
         {igralec.shirt_number != null && (
           <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-950 font-black tabular-nums text-slate-400">
             {igralec.shirt_number}
           </span>
         )}
         <div className="min-w-0 flex-1">
-          <div className="truncate font-bold">
+          <Link
+            to={`/igralec/${igralec.id}`}
+            className="block truncate font-bold hover:text-gnl-300"
+          >
             {prikazniIme(igralec.full_name)}
-          </div>
+          </Link>
           <div className="text-xs text-slate-500">
             {igralec.matches} tekem · {igralec.minutes} min · {igralec.goals}{' '}
             {igralec.goals === 1 ? 'gol' : 'golov'} ·{' '}

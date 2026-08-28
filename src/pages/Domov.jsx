@@ -31,7 +31,9 @@ export default function Domov() {
             .eq('is_own_goal', false),
           supabase
             .from('player_overview')
-            .select('id, full_name, team_short, position, value, goals, minutes')
+            .select(
+              'id, full_name, team_name, team_short, team_logo, position, value, goals, minutes',
+            )
             .order('goals', { ascending: false })
             .limit(5),
         ])
@@ -229,14 +231,25 @@ export default function Domov() {
           <h2 className="text-xl font-bold">Najboljši strelci lani</h2>
           <ul className="space-y-2">
             {zvezde.map((z, i) => (
-              <li key={z.id} className="kartica kartica-hover flex items-center gap-3 p-3">
+              <li
+                key={z.id}
+                className="kartica kartica-hover flex items-center gap-2 p-3 sm:gap-3"
+              >
                 <span className="w-6 text-center font-black text-slate-500">
                   {i + 1}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-semibold">
+                <Grb
+                  ime={z.team_name}
+                  kratko={z.team_short}
+                  logo={z.team_logo}
+                  velikost={22}
+                />
+                <Link
+                  to={`/igralec/${z.id}`}
+                  className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
+                >
                   {prikazniIme(z.full_name)}
-                </span>
-                <span className="text-xs text-slate-500">{z.team_short}</span>
+                </Link>
                 <span className="znacka bg-rose-400/15 text-rose-200">
                   {z.goals} ⚽
                 </span>

@@ -10,6 +10,7 @@ export default function Glasovanje() {
   const { session, loading } = useAuth()
   const [tekme, setTekme] = useState([])
   const [krogId, setKrogId] = useState(null)
+  const [sezona, setSezona] = useState(null)
   const [tekmaId, setTekmaId] = useState(null)
   const [goli, setGoli] = useState([])
   const [igralci, setIgralci] = useState([])
@@ -30,9 +31,15 @@ export default function Glasovanje() {
       if (error) setNapaka(error.message)
       setTekme(data ?? [])
 
-      // Odpremo pri najnovejšem krogu, ki še čaka na asistence.
-      const cakajoc = (data ?? []).find((t) => t.brez_asistence > 0)
-      setKrogId(cakajoc?.round_id ?? data?.[0]?.round_id ?? null)
+      // Privzeto tekoča sezona: glasovanje o lanskih asistencah nima vpliva na
+      // igro, zato naj bo v ospredju sezona, ki se igra. Lanska ostane
+      // dosegljiva prek preklopa.
+      const sezone = [...new Set((data ?? []).map((t) => t.season))].sort().reverse()
+      const tekoca = sezone[0] ?? null
+      setSezona(tekoca)
+      const vSezoni = (data ?? []).filter((t) => t.season === tekoca)
+      const cakajoc = vSezoni.find((t) => t.brez_asistence > 0)
+      setKrogId(cakajoc?.round_id ?? vSezoni[0]?.round_id ?? null)
       setNalaganje(false)
     }
     nalozi()
@@ -107,10 +114,15 @@ export default function Glasovanje() {
     }
   }, [tekmaId, session])
 
+  const sezone = useMemo(
+    () => [...new Set(tekme.map((t) => t.season))].sort().reverse(),
+    [tekme],
+  )
+
   // Krogi z odigranimi tekmami; značka pove, koliko golov v krogu še čaka.
   const krogi = useMemo(() => {
     const m = new Map()
-    for (const t of tekme) {
+    for (const t of tekme.filter((t) => !sezona || t.season === sezona)) {
       const k = m.get(t.round_id) ?? {
         id: t.round_id,
         number: t.round_number,
@@ -123,7 +135,7 @@ export default function Glasovanje() {
     return [...m.values()].sort(
       (a, b) => b.season.localeCompare(a.season) || b.number - a.number,
     )
-  }, [tekme])
+  }, [tekme, sezona])
 
   const tekmeVKrogu = useMemo(
     () => tekme.filter((t) => t.round_id === krogId),
@@ -191,6 +203,41 @@ export default function Glasovanje() {
           asistenca prizna in prinese <strong className="text-gnl-300">+3 točke</strong>.
         </p>
       </header>
+
+      {sezone.length > 1 && (
+        <div className="flex flex-wrap items-center gap-2">
+          {sezone.map((sz) => (
+            <button
+              key={sz}
+              onClick={() => {
+                setSezona(sz)
+                const prva = tekme.find(
+                  (t) => t.season === sz && t.brez_asistence > 0,
+                )
+                const katerakoli = tekme.find((t) => t.season === sz)
+                setKrogId((prva ?? katerakoli)?.round_id ?? null)
+              }}
+              className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+                sezona === sz ? 'bg-gnl-500 text-slate-950' : 'kartica text-slate-300'
+              }`}
+            >
+              {sz}
+              {sz !== sezone[0] && (
+                <span className="ml-1.5 text-[10px] uppercase opacity-70">
+                  arhiv
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {sezona && sezona !== sezone[0] && (
+        <p className="kartica border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200">
+          Glasuješ o pretekli sezoni. Na točke tekoče lige to ne vpliva —
+          popravi le zgodovino.
+        </p>
+      )}
 
       {/* 1. korak: krog */}
       <div className="space-y-2">

@@ -127,8 +127,32 @@ async function igralecId(teamId, polnoIme, { vratar, st, dvoumno = false }) {
     .eq('full_name', polnoIme)
   if (dvoumno) poizvedba = poizvedba.eq('shirt_number', st)
 
-  const { data: zadetki } = await poizvedba.limit(1)
-  const obstoj = zadetki?.[0]
+  let { data: zadetki } = await poizvedba.limit(1)
+  let obstoj = zadetki?.[0]
+
+  // Prestop med sezono: igralca s tem imenom pri tem klubu ni, imamo pa ga pri
+  // drugem. Zapisnik je najzanesljivejsi dokaz — ce nastopa za ta klub, je
+  // njegov. Brez tega bi ga ustvarili na novo in bi bil v bazi dvakrat: enkrat
+  // s statistiko in ceno, enkrat prazen.
+  if (!obstoj) {
+    const { data: drugje } = await db
+      .from('players')
+      .select('id, position, position_source, team_id, teams(name)')
+      .eq('full_name', polnoIme)
+      .limit(2)
+
+    if (drugje?.length === 1) {
+      const p = drugje[0]
+      await db.from('players').update({ team_id: teamId, shirt_number: st }).eq('id', p.id)
+      console.log(
+        `  prestop: ${polnoIme} ${p.teams?.name ?? '?'} -> klub ${teamId}`,
+      )
+      obstoj = p
+    } else if (drugje?.length > 1) {
+      // Vec soimenjakov — ne ugibamo, raje nov zapis in opozorilo.
+      console.log(`  soimenjaki: ${polnoIme} — ustvarjam novega igralca`)
+    }
+  }
 
   if (obstoj) {
     igralci.set(kljuc, obstoj.id)
