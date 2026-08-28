@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { PRAVILA_OPIS } from '../lib/tockovanje'
 import { prikazniIme, formatirajTocke, formatirajCeno } from '../lib/pomozno'
 import Grb from '../components/Grb'
+import Klepet from '../components/Klepet'
 
 export default function Domov() {
   const [stat, setStat] = useState(null)
@@ -278,6 +279,9 @@ export default function Domov() {
           />
         </section>
       )}
+
+      {/* klepet — anonimni prostor za pogovor */}
+      <Klepet />
 
       {/* naloge za skupnost */}
       {stat && (stat.brezPozicije > 0 || stat.brezAsistence > 0) && (

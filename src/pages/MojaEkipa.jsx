@@ -876,10 +876,11 @@ function TrgIgralcev({
           return (
             <li
               key={i.id}
-              className={`kartica flex items-center gap-2 p-2 ${
+              className={`kartica flex flex-col gap-1 p-2 ${
                 jeIzbran ? 'ring-1 ring-gnl-400/40' : ''
-              } ${razlog ? 'opacity-50' : ''}`}
+              } ${razlog ? 'opacity-60' : ''}`}
             >
+              <div className="flex items-center gap-2">
               <Grb
                 ime={i.team_name}
                 kratko={i.team_short}
@@ -902,7 +903,6 @@ function TrgIgralcev({
               </span>
               <button
                 onClick={() => naPreklop(i)}
-                disabled={!!razlog}
                 title={razlog ?? undefined}
                 className={`${
                   jeIzbran ? 'gumb-tih' : 'gumb-glavni'
@@ -910,6 +910,12 @@ function TrgIgralcev({
               >
                 {jeIzbran ? '✕' : '⊕'}
               </button>
+              </div>
+              {razlog && (
+                <p className="text-[11px] leading-tight text-amber-300/90">
+                  ⚠ {razlog}
+                </p>
+              )}
             </li>
           )
         })}
