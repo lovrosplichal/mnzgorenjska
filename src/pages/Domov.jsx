@@ -10,6 +10,7 @@ export default function Domov() {
   const [zvezde, setZvezde] = useState([])
   const [krog, setKrog] = useState(null)
   const [krogNajboljsi, setKrogNajboljsi] = useState([])
+  const [naslednjeTekme, setNaslednjeTekme] = useState([])
 
   useEffect(() => {
     async function nalozi() {
@@ -50,6 +51,32 @@ export default function Domov() {
         })(),
       })
       setZvezde(top.data ?? [])
+
+      // Naslednje tekme — vse še neuvožene (imported_at NULL), do 30 tekem.
+      // Igralcem pove, katera tekma prihaja in katera dva kluba igrata.
+      const [{ data: prihajajoce }, { data: vsiKlubi }, { data: vsiKrogi }] =
+        await Promise.all([
+          supabase
+            .from('matches')
+            .select(
+              'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals',
+            )
+            .is('imported_at', null)
+            .order('played_on', { ascending: true, nullsFirst: false })
+            .limit(30),
+          supabase.from('teams').select('id, name, short_name, logo_url'),
+          supabase.from('rounds').select('id, season, number, played_on'),
+        ])
+      const klubPo = Object.fromEntries((vsiKlubi ?? []).map((t) => [t.id, t]))
+      const krogPo = Object.fromEntries((vsiKrogi ?? []).map((k) => [k.id, k]))
+      setNaslednjeTekme(
+        (prihajajoce ?? []).map((m) => ({
+          ...m,
+          home: klubPo[m.home_team_id],
+          away: klubPo[m.away_team_id],
+          krog: krogPo[m.round_id],
+        })),
+      )
 
       // Kdo je bil najboljši v zadnjem odigranem krogu.
       const { data: zadnji } = await supabase
@@ -144,6 +171,95 @@ export default function Domov() {
             <span className="gumb-glavni shrink-0">Glasuj zdaj →</span>
           </div>
         </Link>
+      )}
+
+      {/* naslednje tekme — razpored, da uporabniki vedo kaj prihaja */}
+      {naslednjeTekme.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-bold">Naslednje tekme</h2>
+            <span className="text-xs text-slate-500">
+              {naslednjeTekme.length}{' '}
+              {naslednjeTekme.length === 1 ? 'tekma' : 'tekem'} v razporedu
+            </span>
+          </div>
+          <div className="space-y-4">
+            {(() => {
+              const poKrogu = new Map()
+              for (const t of naslednjeTekme) {
+                const key = t.krog?.id ?? 0
+                if (!poKrogu.has(key))
+                  poKrogu.set(key, { krog: t.krog, tekme: [] })
+                poKrogu.get(key).tekme.push(t)
+              }
+              return [...poKrogu.values()]
+                .sort((a, b) => (a.krog?.number ?? 0) - (b.krog?.number ?? 0))
+                .slice(0, 3)
+                .map(({ krog, tekme }) => (
+                  <div key={krog?.id ?? 'brez'} className="kartica p-3 sm:p-4">
+                    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-sm font-bold text-gnl-300">
+                        {krog ? `${krog.number}. krog` : 'Brez kroga'}
+                        {krog?.season && (
+                          <span className="ml-2 font-normal text-slate-500">
+                            {krog.season}
+                          </span>
+                        )}
+                      </span>
+                      {krog?.played_on && (
+                        <span className="text-xs text-slate-500">
+                          {new Date(krog.played_on).toLocaleDateString('sl-SI', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'numeric',
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    <ul className="space-y-1.5">
+                      {tekme.map((t) => (
+                        <li
+                          key={t.id}
+                          className="flex items-center gap-2 rounded-lg bg-white/5 p-2 text-sm"
+                        >
+                          <div className="flex flex-1 items-center justify-end gap-2 truncate">
+                            <span className="truncate font-semibold">
+                              {t.home?.name ?? '?'}
+                            </span>
+                            <Grb
+                              ime={t.home?.name}
+                              kratko={t.home?.short_name}
+                              logo={t.home?.logo_url}
+                              velikost={22}
+                            />
+                          </div>
+                          <span className="shrink-0 text-slate-500">
+                            {t.played_on
+                              ? new Date(t.played_on).toLocaleDateString(
+                                  'sl-SI',
+                                  { day: 'numeric', month: 'numeric' },
+                                )
+                              : 'vs'}
+                          </span>
+                          <div className="flex flex-1 items-center gap-2 truncate">
+                            <Grb
+                              ime={t.away?.name}
+                              kratko={t.away?.short_name}
+                              logo={t.away?.logo_url}
+                              velikost={22}
+                            />
+                            <span className="truncate font-semibold">
+                              {t.away?.name ?? '?'}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+            })()}
+          </div>
+        </section>
       )}
 
       {/* številke */}

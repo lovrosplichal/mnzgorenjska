@@ -6,17 +6,31 @@ import Grb from '../components/Grb'
 import { Link } from 'react-router-dom'
 
 const PRAG = 5
+const MIN_PRAG = 2
 const POZICIJE = ['GK', 'DEF', 'MID', 'FWD']
 
 const IKONA = { GK: '🧤', DEF: '🛡️', MID: '⚙️', FWD: '🎯' }
+
+// Ista logika kot v migraciji `adaptivni_prag` — če je prior močan za neko
+// pozicijo, prag za to pozicijo pade.
+function adaptivniPrag(priorZaTo) {
+  if (priorZaTo >= 0.70) return Math.max(MIN_PRAG, PRAG - 3)
+  if (priorZaTo >= 0.50) return Math.max(MIN_PRAG, PRAG - 2)
+  if (priorZaTo >= 0.30) return Math.max(MIN_PRAG, PRAG - 1)
+  return PRAG
+}
 
 export default function Pozicije() {
   const { session, loading } = useAuth()
   const [klubi, setKlubi] = useState([])
   const [klubId, setKlubId] = useState(null)
   const [igralci, setIgralci] = useState([])
-  const [glasovi, setGlasovi] = useState({}) // player_id -> {GK: n, ...}
+  const [glasovi, setGlasovi] = useState({}) // player_id -> {GK: {votes,weight}, ...}
+  const [priori, setPriori] = useState({}) // player_id -> {GK: score, ...}
   const [mojiGlasovi, setMojiGlasovi] = useState({}) // player_id -> position
+  const [insiderTeamId, setInsiderTeamId] = useState(null)
+  const [mojaUtez, setMojaUtez] = useState(null)
+  const [mojaTocnost, setMojaTocnost] = useState(null) // {correct, resolved}
   const [nalaganje, setNalaganje] = useState(true)
   const [napaka, setNapaka] = useState(null)
   // Privzeto pokažemo tiste, ki jih je vredno popraviti: brez pozicije in
@@ -34,6 +48,42 @@ export default function Pozicije() {
         setNalaganje(false)
       })
   }, [])
+
+  // Profil (insider status) in točnost glasovanja — enkrat ob prijavi.
+  useEffect(() => {
+    if (!session) {
+      setInsiderTeamId(null)
+      setMojaUtez(null)
+      setMojaTocnost(null)
+      return
+    }
+    let preklican = false
+    ;(async () => {
+      const [{ data: profil }, { data: tocnost }] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('insider_team_id')
+          .eq('id', session.user.id)
+          .maybeSingle(),
+        supabase
+          .from('voter_position_accuracy')
+          .select('resolved, correct')
+          .eq('voter_id', session.user.id)
+          .maybeSingle(),
+      ])
+      if (preklican) return
+      setInsiderTeamId(profil?.insider_team_id ?? null)
+      const r = tocnost?.resolved ?? 0
+      const c = tocnost?.correct ?? 0
+      setMojaTocnost({ resolved: r, correct: c })
+      // Ista formula kot voter_weight v migraciji.
+      const min = 5
+      const max = 2
+      if (r < min) setMojaUtez(1.0)
+      else setMojaUtez(Math.max(0.5, Math.min(max, 0.5 + (max - 0.5) * (c / r))))
+    })()
+    return () => { preklican = true }
+  }, [session])
 
   useEffect(() => {
     if (!klubId) return
@@ -53,17 +103,34 @@ export default function Pozicije() {
       const ids = (p ?? []).map((x) => x.id)
       if (!ids.length) return
 
-      const { data: st } = await supabase
-        .from('position_vote_counts')
-        .select('player_id, position, votes')
-        .in('player_id', ids)
+      // Uteži glasovanja (upoštevajo zaupanje + insider), priori za pozicije.
+      const [{ data: st }, { data: pr }] = await Promise.all([
+        supabase
+          .from('position_vote_weights')
+          .select('player_id, position, votes, weight')
+          .in('player_id', ids),
+        supabase
+          .from('position_priors')
+          .select('player_id, position, score')
+          .in('player_id', ids),
+      ])
       if (preklican) return
       const skupine = {}
       for (const v of st ?? []) {
         skupine[v.player_id] = skupine[v.player_id] ?? {}
-        skupine[v.player_id][v.position] = v.votes
+        skupine[v.player_id][v.position] = {
+          votes: v.votes,
+          weight: Number(v.weight),
+        }
       }
       setGlasovi(skupine)
+
+      const priorMap = {}
+      for (const v of pr ?? []) {
+        priorMap[v.player_id] = priorMap[v.player_id] ?? {}
+        priorMap[v.player_id][v.position] = Number(v.score)
+      }
+      setPriori(priorMap)
 
       if (session) {
         const { data: moji } = await supabase
@@ -81,7 +148,19 @@ export default function Pozicije() {
     return () => {
       preklican = true
     }
-  }, [klubId, session])
+    // insiderTeamId je v DEP, ker sprememba insider statusa vpliva na uteži.
+  }, [klubId, session, insiderTeamId])
+
+  async function nastaviInsider(id) {
+    if (!session) return
+    setNapaka(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ insider_team_id: id })
+      .eq('id', session.user.id)
+    if (error) return setNapaka(error.message)
+    setInsiderTeamId(id)
+  }
 
   async function glasuj(playerId, pozicija) {
     if (!session) return
@@ -97,8 +176,8 @@ export default function Pozicije() {
 
     const [{ data: st }, { data: p }] = await Promise.all([
       supabase
-        .from('position_vote_counts')
-        .select('player_id, position, votes')
+        .from('position_vote_weights')
+        .select('player_id, position, votes, weight')
         .eq('player_id', playerId),
       supabase
         .from('players')
@@ -109,7 +188,10 @@ export default function Pozicije() {
     setGlasovi((prej) => ({
       ...prej,
       [playerId]: Object.fromEntries(
-        (st ?? []).map((v) => [v.position, v.votes]),
+        (st ?? []).map((v) => [
+          v.position,
+          { votes: v.votes, weight: Number(v.weight) },
+        ]),
       ),
     }))
     if (p)
@@ -139,18 +221,33 @@ export default function Pozicije() {
   if (loading || nalaganje)
     return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
 
+  const insiderVeljaZaKlub = insiderTeamId && insiderTeamId === klubId
+
   return (
     <div className="space-y-6">
       <header className="space-y-2">
         <h1 className="text-3xl font-black naslov">Kje kdo igra?</h1>
         <p className="max-w-2xl text-slate-400">
           Zapisniki označijo le vratarja, postave pa naštejejo po številkah
-          dresov — pozicij torej ni mogoče razbrati. Določi jih skupnost: pri{' '}
-          <strong className="text-gnl-300">{PRAG} glasovih</strong> se pozicija
-          potrdi. Od nje je odvisno, koliko je vreden gol in kdo dobi točke za
-          ohranjeno mrežo.
+          dresov — pozicij torej ni mogoče razbrati. Določi jih skupnost. Osnovni
+          prag je <strong className="text-gnl-300">{PRAG} glasov</strong>, a se
+          zniža (do {MIN_PRAG}), če je statistični prior (številka dresa, goli,
+          kartoni) močan v tisto smer. Glasovi{' '}
+          <strong className="text-gnl-300">poznavalcev kluba</strong> in
+          uporabnikov z <strong className="text-gnl-300">visoko točnostjo</strong>{' '}
+          štejejo več.
         </p>
       </header>
+
+      {session && (
+        <MojStatus
+          klubi={klubi}
+          insiderTeamId={insiderTeamId}
+          onNastaviInsider={nastaviInsider}
+          utez={mojaUtez}
+          tocnost={mojaTocnost}
+        />
+      )}
 
       <div className="kartica flex flex-wrap items-end gap-3 p-3">
         <label className="min-w-48 flex-1">
@@ -165,6 +262,7 @@ export default function Pozicije() {
             {klubi.map((t) => (
               <option key={t.id} value={t.id}>
                 {t.name}
+                {insiderTeamId === t.id ? '  ★ poznavalec' : ''}
               </option>
             ))}
           </select>
@@ -199,8 +297,10 @@ export default function Pozicije() {
               key={i.id}
               igralec={i}
               glasovi={glasovi[i.id] ?? {}}
+              prior={priori[i.id] ?? null}
               mojGlas={mojiGlasovi[i.id]}
               omogoceno={Boolean(session)}
+              insiderVelja={Boolean(insiderVeljaZaKlub)}
               onGlasuj={glasuj}
             />
           ))}
@@ -212,14 +312,77 @@ export default function Pozicije() {
   )
 }
 
-function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
+function MojStatus({ klubi, insiderTeamId, onNastaviInsider, utez, tocnost }) {
+  return (
+    <div className="kartica space-y-3 border-gnl-400/20 bg-gnl-500/5 p-3 sm:p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-sm font-bold text-gnl-200">Moj status glasovalca</h2>
+        {utez != null && (
+          <span
+            title="Utež posameznega glasu — sešteje se z insider bonusom, če glasuješ za igralca svojega kluba."
+            className="znacka bg-white/10 text-slate-200"
+          >
+            utež {utez.toFixed(2)}×
+            {tocnost && tocnost.resolved > 0 && (
+              <span className="ml-1 text-[10px] text-slate-400">
+                ({tocnost.correct}/{tocnost.resolved} točnih)
+              </span>
+            )}
+          </span>
+        )}
+      </div>
+      <label className="block text-sm">
+        <span className="mb-1 block text-xs text-slate-400">
+          Klub, ki ga dobro poznam (poznavalec) — moj glas za igralce tega kluba
+          šteje več:
+        </span>
+        <select
+          value={insiderTeamId ?? ''}
+          onChange={(e) =>
+            onNastaviInsider(e.target.value ? Number(e.target.value) : null)
+          }
+          className="w-full max-w-md rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-slate-100"
+        >
+          <option value="">— nisem poznavalec nobenega kluba —</option>
+          {klubi.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-[11px] leading-snug text-slate-500">
+        Poznavalec označi le en klub. Uteži se s časom umirijo — če se tvoji
+        glasovi kažejo za napačne, se zaupanje niža. Zaupanje se preračuna iz
+        preteklih glasov, ko je pozicija znana.
+      </p>
+    </div>
+  )
+}
+
+function IgralecKartica({
+  igralec,
+  glasovi,
+  prior,
+  mojGlas,
+  omogoceno,
+  insiderVelja,
+  onGlasuj,
+}) {
   // Zapisnika in ročnega vnosa administratorja glasovanje ne premakne; vse
   // ostalo (neznano, ugibanje, prejšnje glasovanje) je mogoče popraviti.
   const izZapisnika = igralec.position_source === 'zapisnik'
   const zaklenjeno = izZapisnika || igralec.position_source === 'admin'
   const ugibano = igralec.position_source === 'ugibanje'
   const potrjeno = Boolean(igralec.position)
-  const vodilna = Object.entries(glasovi).sort((a, b) => b[1] - a[1])[0]
+  // Vodilna pozicija po SEŠTETIH UTEŽEH (ne surovih glasovih).
+  const vodilna = Object.entries(glasovi)
+    .map(([p, v]) => [p, v.weight ?? v.votes ?? 0])
+    .sort((a, b) => b[1] - a[1])[0]
+
+  const priorVodilna = prior
+    ? Object.entries(prior).sort((a, b) => b[1] - a[1])[0]
+    : null
 
   return (
     <li className="kartica kartica-hover p-4">
@@ -267,7 +430,18 @@ function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
         )}
       </div>
 
-      {!zaklenjeno && potrjeno && (
+      {!zaklenjeno && priorVodilna && priorVodilna[1] >= 0.30 && (
+        <p className="mt-2 text-xs text-slate-500">
+          Statistika kaže na{' '}
+          <strong className="text-slate-300">
+            {IME_POZICIJE[priorVodilna[0]]} ({Math.round(priorVodilna[1] * 100)}%)
+          </strong>
+          {' '}— glas v tej smeri se šteje z nižjim pragom{' '}
+          ({adaptivniPrag(priorVodilna[1])} namesto {PRAG}).
+        </p>
+      )}
+
+      {!zaklenjeno && potrjeno && !priorVodilna && (
         <p className="mt-2 text-xs text-slate-500">
           {ugibano
             ? 'Pozicija še ni potrjena — če ni prava, klikni pravo.'
@@ -278,29 +452,52 @@ function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
       {!zaklenjeno && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {POZICIJE.map((p) => {
-            const n = glasovi[p] ?? 0
+            const g = glasovi[p] ?? {}
+            const votes = g.votes ?? 0
+            const weight = g.weight ?? 0
+            const priorZa = prior?.[p] ?? 0
+            const pragZa = adaptivniPrag(priorZa)
             const izbran = mojGlas === p
-            const delez = Math.min(100, (n / PRAG) * 100)
+            const delez = Math.min(100, (weight / pragZa) * 100)
+            const potrjenBiVajino = weight >= pragZa
             return (
               <button
                 key={p}
                 onClick={() => onGlasuj(igralec.id, p)}
                 disabled={!omogoceno}
+                title={
+                  `Utež ${weight.toFixed(1)} / prag ${pragZa}` +
+                  (priorZa ? ` · prior ${Math.round(priorZa * 100)}%` : '') +
+                  (insiderVelja ? ' · tvoj glas kot poznavalec šteje več' : '')
+                }
                 className={`relative overflow-hidden rounded-xl px-3 py-2 text-sm font-semibold transition disabled:opacity-40 ${
                   izbran
                     ? 'ring-2 ring-gnl-400'
-                    : 'ring-1 ring-white/10 hover:ring-white/30'
-                } ${p === 'GK' ? 'poz-GK' : p === 'DEF' ? 'poz-DEF' : p === 'MID' ? 'poz-MID' : 'poz-FWD'}`}
+                    : potrjenBiVajino
+                      ? 'ring-2 ring-emerald-400/60'
+                      : 'ring-1 ring-white/10 hover:ring-white/30'
+                } poz-${p}`}
               >
+                {/* Napredek do praga (utežno). */}
                 <span
-                  className="absolute inset-y-0 left-0 bg-white/10 transition-all duration-300"
+                  className="absolute inset-y-0 left-0 bg-white/15 transition-all duration-300"
                   style={{ width: `${delez}%` }}
                   aria-hidden
                 />
+                {/* Prior — tanka črtica na dnu. */}
+                {priorZa > 0 && (
+                  <span
+                    className="absolute inset-x-0 bottom-0 h-1 bg-slate-100/40"
+                    style={{ width: `${Math.round(priorZa * 100)}%` }}
+                    aria-hidden
+                  />
+                )}
                 <span className="relative flex items-center justify-center gap-1">
                   {IKONA[p]} {KRATKA_POZICIJA[p]}
-                  {n > 0 && (
-                    <span className="tabular-nums opacity-70">{n}</span>
+                  {votes > 0 && (
+                    <span className="tabular-nums opacity-70">
+                      {weight.toFixed(1)}
+                    </span>
                   )}
                   {izbran && <span>✓</span>}
                 </span>
@@ -312,7 +509,8 @@ function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
 
       {!potrjeno && vodilna && (
         <p className="mt-2 text-xs text-slate-500">
-          Vodi {IME_POZICIJE[vodilna[0]]} — {vodilna[1]} / {PRAG} glasov
+          Vodi {IME_POZICIJE[vodilna[0]]} — utež {vodilna[1].toFixed(1)} /{' '}
+          {adaptivniPrag(prior?.[vodilna[0]] ?? 0)}
         </p>
       )}
     </li>

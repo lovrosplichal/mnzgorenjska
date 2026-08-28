@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import {
@@ -44,6 +44,7 @@ export default function MojaEkipa() {
   const [iskanje, setIskanje] = useState('')
   // Na telefonu je trg predal, ki se odpre ob kliku na prazno mesto.
   const [odprtTrg, setOdprtTrg] = useState(false)
+  const imeRef = useRef(null)
 
   useEffect(() => {
     if (loading) return
@@ -245,6 +246,17 @@ export default function MojaEkipa() {
     setOdprtTrg(true)
   }
 
+  function poskusiShraniti() {
+    if (!imeEkipe.trim()) {
+      setSporocilo(null)
+      setNapaka('Najprej vpiši ime ekipe.')
+      imeRef.current?.focus()
+      imeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      return
+    }
+    shrani()
+  }
+
   async function shrani() {
     setNapaka(null)
     setSporocilo(null)
@@ -384,20 +396,36 @@ export default function MojaEkipa() {
         </div>
       )}
 
-      {/* proračun in kvote */}
-      <div className="kartica grid grid-cols-3 gap-2 p-3 sm:gap-3 sm:p-4">
-        <Merilo oznaka="Proračun" vrednost={formatirajCeno(proracun)} />
-        <Merilo
-          oznaka="Porabljeno"
-          vrednost={formatirajCeno(porabljeno)}
-          barva={porabljeno > proracun ? 'text-rose-400' : undefined}
-        />
-        <Merilo
-          oznaka="Ostane"
-          vrednost={formatirajCeno(preostalo)}
-          barva={preostalo < 0 ? 'text-rose-400' : 'text-gnl-300'}
-        />
-        <div className="col-span-3">
+      {/* Sticky povzetek — proračun, napredek in shrani so vedno pri roki. */}
+      <div className="kartica sticky top-0 z-30 space-y-3 p-3 shadow-lg shadow-black/30 backdrop-blur sm:top-2 sm:p-4">
+        <div className="grid grid-cols-[1fr_auto] items-start gap-3">
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+              Na voljo še
+            </div>
+            <div
+              className={`text-3xl font-black tabular-nums leading-none sm:text-4xl ${
+                preostalo < 0 ? 'text-rose-400' : 'text-gnl-300'
+              }`}
+            >
+              {formatirajCeno(preostalo)}
+            </div>
+            <div className="mt-1 text-xs text-slate-400">
+              od {formatirajCeno(proracun)} · porabljeno{' '}
+              <span className={porabljeno > proracun ? 'text-rose-400' : ''}>
+                {formatirajCeno(porabljeno)}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={poskusiShraniti}
+            className="gumb-glavni whitespace-nowrap px-4 py-2 text-sm"
+          >
+            Shrani ekipo
+          </button>
+        </div>
+
+        <div>
           <div className="h-2 overflow-hidden rounded-full bg-white/10">
             <div
               className={`h-full rounded-full transition-all duration-300 ${
@@ -431,19 +459,55 @@ export default function MojaEkipa() {
             </span>
           </div>
         </div>
+
+        <label className="block">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+            Ime ekipe
+          </span>
+          <input
+            ref={imeRef}
+            value={imeEkipe}
+            onChange={(e) => setImeEkipe(e.target.value)}
+            placeholder="npr. Gorenjski Orli"
+            className={`mt-1 w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm ${
+              !imeEkipe.trim() && napaka
+                ? 'border-rose-400/60 ring-1 ring-rose-400/30'
+                : 'border-white/10'
+            }`}
+          />
+        </label>
       </div>
 
-      <label className="block">
-        <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-          Ime ekipe
-        </span>
-        <input
-          value={imeEkipe}
-          onChange={(e) => setImeEkipe(e.target.value)}
-          placeholder="npr. Gorenjski Orli"
-          className="mt-1 w-full max-w-sm rounded-xl border border-white/10 bg-slate-900 px-3 py-2"
-        />
-      </label>
+      {/* Uvodni nasvet, ko ekipa še nima igralcev. */}
+      {izbrani.length === 0 && (
+        <div className="kartica border-gnl-400/30 bg-gnl-500/5 p-3 text-sm sm:p-4">
+          <h2 className="mb-1 text-sm font-bold text-gnl-200">Kje začeti?</h2>
+          <ol className="ml-4 list-decimal space-y-1 text-slate-300">
+            <li>
+              Vpiši ime ekipe zgoraj — brez njega shranjevanje ne bo delovalo.
+            </li>
+            <li>
+              Klikni <strong className="text-white">＋</strong> na praznem mestu
+              igrišča ali gumb <strong className="text-white">Dodaj igralca</strong>{' '}
+              spodaj (na telefonu) oz. izberi z <strong className="text-white">
+                trga igralcev
+              </strong>{' '}
+              desno.
+            </li>
+            <li>
+              Kader je {VELIKOST_EKIPE} igralcev: {POZICIJE.GK.kader} GK,{' '}
+              {POZICIJE.DEF.kader} BR, {POZICIJE.MID.kader} VE,{' '}
+              {POZICIJE.FWD.kader} NA. Iz istega kluba največ {MAX_IZ_KLUBA}.
+            </li>
+            <li>
+              Ko so mesta zapolnjena, določi{' '}
+              <strong className="text-white">kapetana</strong> in{' '}
+              <strong className="text-white">namestnika</strong>, nato pritisni{' '}
+              <strong className="text-white">Shrani ekipo</strong>.
+            </li>
+          </ol>
+        </div>
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem] lg:gap-6">
         <div className="min-w-0 space-y-4 sm:space-y-6">
@@ -539,35 +603,68 @@ export default function MojaEkipa() {
             </div>
           </section>
 
-          {/* opozorila in shranjevanje */}
+          {/* status ekipe in shranjevanje */}
           <section className="kartica p-3 sm:p-4">
-            {napakeEkipe.length > 0 && (
-              <ul className="mb-3 space-y-1 text-sm text-amber-300">
-                {napakeEkipe.map((n) => (
-                  <li key={n}>• {n}</li>
-                ))}
-              </ul>
-            )}
-            <div className="hidden flex-wrap items-center gap-3 lg:flex">
-              <button
-                onClick={shrani}
-                disabled={!imeEkipe.trim()}
-                className="gumb-glavni"
-              >
-                Shrani ekipo
-              </button>
-              {napakeEkipe.length > 0 && (
-                <span className="text-xs text-slate-500">
-                  Osnutek lahko shraniš tudi, če pravila še niso izpolnjena.
-                </span>
-              )}
-            </div>
-            {sporocilo && (
-              <p className="mt-2 text-sm text-gnl-300">{sporocilo}</p>
-            )}
-            {napaka && (
-              <p className="mt-2 text-sm text-rose-400">Napaka: {napaka}</p>
-            )}
+            {(() => {
+              const brezImena = !imeEkipe.trim()
+              const pripravljena = !brezImena && napakeEkipe.length === 0
+              return (
+                <div className="space-y-3">
+                  <div
+                    className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${
+                      pripravljena
+                        ? 'border-gnl-400/40 bg-gnl-500/10 text-gnl-200'
+                        : 'border-amber-400/30 bg-amber-500/5 text-amber-200'
+                    }`}
+                  >
+                    <span className="text-lg leading-none">
+                      {pripravljena ? '✅' : 'ℹ️'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold">
+                        {pripravljena
+                          ? 'Ekipa je pripravljena za shranjevanje.'
+                          : 'Za dokončno shranitev je še nekaj potrebnega:'}
+                      </div>
+                      {!pripravljena && (
+                        <ul className="mt-2 space-y-1 text-amber-100/90">
+                          {brezImena && (
+                            <li>• Vpiši ime ekipe (v polju zgoraj).</li>
+                          )}
+                          {napakeEkipe.map((n) => (
+                            <li key={n}>• {n}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {!pripravljena && !brezImena && (
+                        <div className="mt-2 text-xs text-slate-400">
+                          Osnutek lahko shraniš tudi zdaj — pravila boš dopolnil
+                          pozneje.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="hidden flex-wrap items-center gap-3 lg:flex">
+                    <button onClick={poskusiShraniti} className="gumb-glavni">
+                      {pripravljena ? 'Shrani ekipo' : 'Shrani osnutek'}
+                    </button>
+                    {brezImena && (
+                      <span className="text-xs text-rose-300">
+                        Ime ekipe je obvezno — klik te vrne na polje zgoraj.
+                      </span>
+                    )}
+                  </div>
+
+                  {sporocilo && (
+                    <p className="text-sm text-gnl-300">{sporocilo}</p>
+                  )}
+                  {napaka && (
+                    <p className="text-sm text-rose-400">Napaka: {napaka}</p>
+                  )}
+                </div>
+              )
+            })()}
           </section>
         </div>
 
@@ -600,23 +697,37 @@ export default function MojaEkipa() {
       )}
 
       {/* na telefonu sta glavni dejanji vedno pri roki */}
-      <div className="fixed inset-x-0 bottom-0 z-20 flex gap-2 border-t border-white/10 bg-slate-950/95 p-3 backdrop-blur lg:hidden">
-        <button
-          onClick={() => {
-            setFilterPoz('vse')
-            setOdprtTrg(true)
-          }}
-          className="gumb-tih flex-1"
-        >
-          ＋ Dodaj igralca
-        </button>
-        <button
-          onClick={shrani}
-          disabled={!imeEkipe.trim()}
-          className="gumb-glavni flex-1"
-        >
-          Shrani
-        </button>
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-slate-950/95 backdrop-blur lg:hidden">
+        <div className="flex items-center justify-between gap-3 px-3 pt-2 text-xs tabular-nums">
+          <span className="text-slate-400">
+            Ostane{' '}
+            <strong
+              className={`text-sm ${
+                preostalo < 0 ? 'text-rose-400' : 'text-gnl-300'
+              }`}
+            >
+              {formatirajCeno(preostalo)}
+            </strong>
+          </span>
+          <span className="text-slate-500">
+            {izbrani.length}/{VELIKOST_EKIPE} · postava {prvi.length}/
+            {STEVILO_PRVIH}
+          </span>
+        </div>
+        <div className="flex gap-2 p-3 pt-2">
+          <button
+            onClick={() => {
+              setFilterPoz('vse')
+              setOdprtTrg(true)
+            }}
+            className="gumb-tih flex-1"
+          >
+            ＋ Dodaj igralca
+          </button>
+          <button onClick={poskusiShraniti} className="gumb-glavni flex-1">
+            {!imeEkipe.trim() || napakeEkipe.length ? 'Shrani osnutek' : 'Shrani'}
+          </button>
+        </div>
       </div>
     </div>
   )

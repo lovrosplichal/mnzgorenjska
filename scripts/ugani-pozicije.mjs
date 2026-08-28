@@ -59,7 +59,7 @@ const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 // --- podatki ---------------------------------------------------------------
 const { data: igralci, error } = await db
   .from('player_overview')
-  .select('id, full_name, team_id, team_name, position, position_source, minutes, goals, matches')
+  .select('id, full_name, team_id, team_name, position, position_source, minutes, goals, matches, shirt_number')
 if (error) {
   console.error(error.message)
   process.exit(1)
@@ -168,6 +168,107 @@ for (const p of predlogi) {
   else zapisanih++
 }
 console.log(`\nZapisanih ugibanj: ${zapisanih}`)
+
+// --- priori pozicij ---------------------------------------------------------
+// Za vsakega igralca izračunamo porazdelitev [0..1] po pozicijah. Močan prior
+// (>= 0.70) spusti prag glasovanja s 5 na 2 — takrat lahko en glas insiderja
+// pozicijo potrdi. Slabi priori (~ osnovna porazdelitev) ne vplivajo na prag.
+// Priori niso resnica — le pomoč pri glasovanju.
+function priorPozicij(p) {
+  // 1) Številka dresa je najmočnejši posamični signal in dominira, če je znana.
+  let s
+  const n = p.shirt_number
+  if (n === 1) s = { GK: 0.85, DEF: 0.05, MID: 0.05, FWD: 0.05 }
+  else if (n === 12 || n === 13 || n === 22)
+    s = { GK: 0.60, DEF: 0.15, MID: 0.15, FWD: 0.10 }
+  else if ([2, 3, 4, 5].includes(n))
+    s = { GK: 0.02, DEF: 0.65, MID: 0.25, FWD: 0.08 }
+  else if (n === 6) s = { GK: 0.02, DEF: 0.45, MID: 0.45, FWD: 0.08 }
+  else if ([7, 8].includes(n))
+    s = { GK: 0.02, DEF: 0.15, MID: 0.55, FWD: 0.28 }
+  else if (n === 9) s = { GK: 0.02, DEF: 0.03, MID: 0.20, FWD: 0.75 }
+  else if (n === 10) s = { GK: 0.02, DEF: 0.05, MID: 0.35, FWD: 0.58 }
+  else if (n === 11) s = { GK: 0.02, DEF: 0.03, MID: 0.30, FWD: 0.65 }
+  else s = { GK: 0.05, DEF: 0.25, MID: 0.40, FWD: 0.30 } // neinformativno
+
+  // 2) Statistika popravi prior, če imamo dovolj minut.
+  if ((p.minutes ?? 0) >= MIN_MINUT) {
+    const g = p.goliNa90 ?? 0
+    if (g >= 0.40) { s.FWD += 0.25; s.DEF *= 0.3; s.GK *= 0.1 }
+    else if (g >= 0.20) { s.FWD += 0.10; s.MID += 0.05; s.DEF *= 0.7 }
+    else if (g < 0.05) { s.DEF += 0.10; s.FWD *= 0.5 }
+
+    const k = p.kartoniNa90 ?? 0
+    if (k >= 0.30) { s.DEF += 0.10; s.MID += 0.05; s.FWD *= 0.5; s.GK *= 0.1 }
+  }
+
+  // 3) Normalizacija na sum=1, brez negativnih.
+  for (const key of Object.keys(s)) s[key] = Math.max(0, s[key])
+  const skupaj = s.GK + s.DEF + s.MID + s.FWD
+  if (skupaj === 0) return { GK: 0.25, DEF: 0.25, MID: 0.25, FWD: 0.25 }
+  return {
+    GK: s.GK / skupaj,
+    DEF: s.DEF / skupaj,
+    MID: s.MID / skupaj,
+    FWD: s.FWD / skupaj,
+  }
+}
+
+// Za priore uporabimo VSE igralce (tudi tiste, ki jih razvrščanje ni zajelo).
+// Napolnimo tudi za novince brez minut — dobijo prior iz številke dresa.
+const kartoniPoIgralcu = poIgralcu
+const priori = igralci.map((p) => {
+  const kart = kartoniPoIgralcu.get(p.id) ?? { rumeni: 0, rdeci: 0 }
+  const na90 = (v) => v / Math.max(1, (p.minutes ?? 0) / 90)
+  return {
+    id: p.id,
+    full_name: p.full_name,
+    prior: priorPozicij({
+      ...p,
+      goliNa90: (p.minutes ?? 0) >= MIN_MINUT ? na90(p.goals ?? 0) : 0,
+      kartoniNa90: (p.minutes ?? 0) >= MIN_MINUT ? na90(kart.rumeni + kart.rdeci) : 0,
+    }),
+  }
+})
+
+const vrstice = []
+for (const pi of priori) {
+  for (const koda of ['GK', 'DEF', 'MID', 'FWD']) {
+    vrstice.push({
+      player_id: pi.id,
+      position: koda,
+      score: Number(pi.prior[koda].toFixed(3)),
+      updated_at: new Date().toISOString(),
+    })
+  }
+}
+
+// Vrstice zapisujemo v paketih, da ne presežemo request-sizea.
+const { error: eDel } = await db
+  .from('position_priors')
+  .delete()
+  .in('player_id', priori.map((p) => p.id))
+if (eDel) console.log(`Napaka pri brisanju starih priorjev: ${eDel.message}`)
+
+let zapisanihPriorjev = 0
+for (let i = 0; i < vrstice.length; i += 200) {
+  const paket = vrstice.slice(i, i + 200)
+  const { error: eIns } = await db.from('position_priors').insert(paket)
+  if (eIns) console.log(`Napaka pri zapisu priorjev: ${eIns.message}`)
+  else zapisanihPriorjev += paket.length
+}
+console.log(`Zapisanih priorjev: ${zapisanihPriorjev} (${priori.length} igralcev × 4 pozicije)`)
+
+// Nekaj najbolj prepričljivih primerov v izpis.
+const najzanesljivejsi = [...priori]
+  .map((p) => ({ ...p, max: Math.max(...Object.values(p.prior)) }))
+  .sort((a, b) => b.max - a.max)
+  .slice(0, 5)
+console.log('\nNajmočnejši priori:')
+for (const p of najzanesljivejsi) {
+  const [koda, v] = Object.entries(p.prior).sort((a, b) => b[1] - a[1])[0]
+  console.log(`  ${p.full_name.padEnd(24)} ${koda}: ${(v * 100).toFixed(0)}%`)
+}
 
 const { data: pregled } = await db.from('position_confidence').select('*')
 console.log('\nIzvor pozicij:')

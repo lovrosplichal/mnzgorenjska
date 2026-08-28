@@ -15,6 +15,7 @@ export default function Administracija() {
   const [napaka, setNapaka] = useState(null)
   const [iskanje, setIskanje] = useState('')
   const [zadetki, setZadetki] = useState([])
+  const [klubi, setKlubi] = useState([])
 
   useEffect(() => {
     if (loading) return
@@ -32,7 +33,7 @@ export default function Administracija() {
       setJeAdmin(admin)
 
       if (admin) {
-        const [tekme, bp, ba, kr] = await Promise.all([
+        const [tekme, bp, ba, kr, kl] = await Promise.all([
           supabase
             .from('matches')
             .select('id, zapisnik_id, source_url, import_warnings')
@@ -52,11 +53,13 @@ export default function Administracija() {
             .select('id, season, number')
             .order('season')
             .order('number'),
+          supabase.from('teams').select('id, name').order('name'),
         ])
         setOpozorila((tekme.data ?? []).filter((t) => t.import_warnings?.length))
         setBrezPozicije(bp.count ?? 0)
         setBrezAsistence(ba.count ?? 0)
         setKrogi(kr.data ?? [])
+        setKlubi(kl.data ?? [])
       }
       setNalaganje(false)
     }
@@ -83,10 +86,26 @@ export default function Administracija() {
     if (!iskanje.trim()) return setZadetki([])
     const { data } = await supabase
       .from('player_overview')
-      .select('id, full_name, team_name, position, value, minutes, goals')
+      .select('id, full_name, team_id, team_name, position, value, minutes, goals')
       .ilike('full_name', `%${iskanje.trim()}%`)
       .limit(15)
     setZadetki(data ?? [])
+  }
+
+  async function premakniKlub(id, novKlubId) {
+    setNapaka(null)
+    const { error } = await supabase
+      .from('players')
+      .update({ team_id: novKlubId })
+      .eq('id', id)
+    if (error) return setNapaka(error.message)
+    const novoIme = klubi.find((k) => k.id === novKlubId)?.name ?? ''
+    setZadetki(
+      zadetki.map((z) =>
+        z.id === id ? { ...z, team_id: novKlubId, team_name: novoIme } : z,
+      ),
+    )
+    setSporocilo(`Igralec prestavljen v klub ${novoIme}.`)
   }
 
   async function nastaviPozicijo(id, pozicija) {
@@ -231,6 +250,24 @@ SUPABASE_SERVICE_ROLE_KEY=... node scripts/ovrednoti-igralce.mjs`}
                     {IME_POZICIJE[p]}
                   </button>
                 ))}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <span className="text-slate-500">Prestavi v klub:</span>
+                <select
+                  value={z.team_id ?? ''}
+                  onChange={(e) =>
+                    e.target.value &&
+                    Number(e.target.value) !== z.team_id &&
+                    premakniKlub(z.id, Number(e.target.value))
+                  }
+                  className="rounded-lg border border-white/10 bg-slate-900 px-2 py-1 text-xs"
+                >
+                  {klubi.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.name}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div className="mt-2 flex flex-wrap gap-2">
                 <select
