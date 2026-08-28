@@ -115,6 +115,19 @@ for (const [, kader] of poKlubih) {
   }
 }
 
+// --- nihče ne sme ostati brez pozicije ---------------------------------------
+// Igralec brez pozicije se ne more postaviti na igrišče, zato je za fantasy
+// ligo neuporaben. Kdor ima premalo minut za oceno (ali sploh ne igra), dobi
+// vezista — najpogostejšo pozicijo na igrišču in najmanj tvegano ugibanje.
+// Glasovanje skupnosti to popravi, brž ko kdo opazi napako.
+const zeUgotovljeni = new Set(predlogi.map((p) => p.id))
+for (const p of igralci) {
+  if (zeUgotovljeni.has(p.id)) continue
+  if (['zapisnik', 'admin', 'glasovanje'].includes(p.position_source)) continue
+  if (p.position) continue
+  predlogi.push({ ...p, ugibanje: 'MID', goliNa90: 0, kartoniNa90: 0, brezDokazov: true })
+}
+
 // --- izpis -------------------------------------------------------------------
 const steviloPo = {}
 for (const p of predlogi)

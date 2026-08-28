@@ -20,6 +20,22 @@ const PRIVZETA = 4.5
 const MIN_MINUT = 270 // pod tem ni dovolj dokazov (3 cele tekme)
 const MINUT_ZA_POLNO_ZAUPANJE = 900 // 10 celih tekem
 
+// Zgornja meja po pozicijah — kot v Premier League Fantasy so najdražji
+// vezisti in napadalci, vratarji pa poceni. Brez tega bi vratar z eno dobro
+// sezono stal enako kot najboljši strelec lige.
+const MEJE = {
+  GK: [4.0, 7.0],
+  DEF: [4.0, 9.5],
+  MID: [4.0, 12.0],
+  FWD: [4.0, 12.0],
+}
+
+// Cena raste s percentilom na EKSPONENT. Linearna lestvica je dala povprečje
+// 8.0, kar pomeni 15 × 8 = 120 za kader in 100 proračuna — ekipe ni bilo mogoče
+// sestaviti brez same najcenejše polnitve. Pri eksponentu 3 je mediana 5.0 in
+// povprečje 6.0, torej povprečen kader stane ~90 in ostane nekaj za okrepitve.
+const EKSPONENT = 3
+
 // Bonus za nastope v višjih ligah (NZS)
 const BONUS_LIGE = {
   '1SNL': 2.0,
@@ -130,8 +146,21 @@ if (ocene.size === 0) {
 // --- razvrstitev v cenovni razpon -----------------------------------------
 // Percentil je odpornejši od linearne lestvice, ker en izjemen igralec
 // ne stisne vseh ostalih na dno.
-const urejene = [...ocene.values()].sort((a, b) => a - b)
-const percentil = (v) => {
+// Percentil računamo znotraj pozicije: napadalci v tem točkovanju kot skupina
+// dosegajo višje ocene od branilcev, zato bi jih skupna lestvica vse potisnila
+// v vrh cenika — povprečen napadalec je stal 9.9 in trije so pojedli tretjino
+// proračuna.
+const poPoziciji = new Map()
+for (const p of igralci ?? []) {
+  const o = ocene.get(p.id)
+  if (o == null) continue
+  const koda = p.position ?? 'MID'
+  if (!poPoziciji.has(koda)) poPoziciji.set(koda, [])
+  poPoziciji.get(koda).push(o)
+}
+for (const seznam of poPoziciji.values()) seznam.sort((a, b) => a - b)
+
+const percentilV = (urejene, v) => {
   let lo = 0
   let hi = urejene.length
   while (lo < hi) {
@@ -154,13 +183,16 @@ for (const p of igralci ?? []) {
     continue
   }
 
+  const koda = p.position ?? 'MID'
+  const [spodnja, zgornja] = MEJE[koda] ?? [NAJNIZJA, NAJVISJA]
+
   let vrednost
   const ocena = ocene.get(p.id)
   if (ocena == null) {
     vrednost = PRIVZETA
   } else {
-    const q = percentil(ocena)
-    vrednost = NAJNIZJA + q * (NAJVISJA - NAJNIZJA)
+    const q = percentilV(poPoziciji.get(koda) ?? [], ocena)
+    vrednost = spodnja + Math.pow(q, EKSPONENT) * (zgornja - spodnja)
   }
 
   // bonus za višje lige (NZS)
@@ -171,7 +203,7 @@ for (const p of igralci ?? []) {
     vrednost += bonus * Math.min(1, minute / 900 || 1)
   }
 
-  vrednost = zaokrozi(Math.min(NAJVISJA, Math.max(NAJNIZJA, vrednost)))
+  vrednost = zaokrozi(Math.min(zgornja, Math.max(spodnja, vrednost)))
   razpored.set(vrednost, (razpored.get(vrednost) ?? 0) + 1)
 
   const { error: eUpd } = await db

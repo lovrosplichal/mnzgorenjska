@@ -177,31 +177,45 @@ ok(
 )
 
 // --- 6. glasovanje o poziciji ------------------------------------------------
+// Brez pozicije ni več nikogar — vsak igralec ima vsaj ugibanje iz statistike,
+// sicer ga ne bi bilo mogoče postaviti na igrišče. Glasovanje mora zato znati
+// popraviti prav ugibanje.
 const { data: brezPozicije } = await u.c
   .from('players')
-  .select('id, full_name')
-  .is('position', null)
+  .select('id, full_name, position, position_source')
+  .eq('position_source', 'ugibanje')
   .limit(1)
   .single()
-ok('najden igralec brez pozicije', Boolean(brezPozicije))
+ok('najden igralec z ugibano pozicijo', Boolean(brezPozicije))
+
+// Glasujemo za pozicijo, ki je različna od ugibanja, da je popravek razviden.
+const novaPozicija = brezPozicije?.position === 'MID' ? 'DEF' : 'MID'
 
 for (let n = 0; n < PRAG - 1; n++)
   await users[n].c
     .from('position_votes')
-    .insert({ player_id: brezPozicije.id, voter_id: users[n].id, position: 'MID' })
+    .insert({
+      player_id: brezPozicije.id,
+      voter_id: users[n].id,
+      position: novaPozicija,
+    })
 const { data: pozPod } = await anon
   .from('players')
-  .select('position')
+  .select('position, position_source')
   .eq('id', brezPozicije.id)
   .single()
-ok(`pri ${PRAG - 1} glasovih pozicija še ni potrjena`, pozPod.position === null)
+ok(
+  `pri ${PRAG - 1} glasovih pozicija še ni potrjena`,
+  pozPod.position_source === 'ugibanje',
+  pozPod.position_source,
+)
 
 await users[PRAG - 1].c
   .from('position_votes')
   .insert({
     player_id: brezPozicije.id,
     voter_id: users[PRAG - 1].id,
-    position: 'MID',
+    position: novaPozicija,
   })
 const { data: pozNad } = await anon
   .from('players')
@@ -209,8 +223,8 @@ const { data: pozNad } = await anon
   .eq('id', brezPozicije.id)
   .single()
 ok(
-  `pri ${PRAG} glasovih se pozicija potrdi`,
-  pozNad.position === 'MID' && pozNad.position_source === 'glasovanje',
+  `pri ${PRAG} glasovih se ugibanje popravi`,
+  pozNad.position === novaPozicija && pozNad.position_source === 'glasovanje',
   `${pozNad.position}/${pozNad.position_source}`,
 )
 
@@ -391,7 +405,10 @@ if (admin) {
   await admin.from('goals').update({ assist_player_id: null }).eq('id', gol.id)
   await admin
     .from('players')
-    .update({ position: null, position_source: 'neznano' })
+    .update({
+      position: brezPozicije.position,
+      position_source: brezPozicije.position_source,
+    })
     .eq('id', brezPozicije.id)
 } else {
   console.log(
