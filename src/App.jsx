@@ -3,6 +3,7 @@ import { AuthProvider } from './lib/useAuth'
 import Navbar from './components/Navbar'
 import Domov from './pages/Domov'
 import Igralci from './pages/Igralci'
+import Igralec from './pages/Igralec'
 import Lestvica from './pages/Lestvica'
 import Prijava from './pages/Prijava'
 import MojaEkipa from './pages/MojaEkipa'
@@ -22,6 +23,7 @@ export default function App() {
             <Route path="/glasovanje" element={<Glasovanje />} />
             <Route path="/pozicije" element={<Pozicije />} />
             <Route path="/igralci" element={<Igralci />} />
+            <Route path="/igralec/:id" element={<Igralec />} />
             <Route path="/lestvica" element={<Lestvica />} />
             <Route path="/prijava" element={<Prijava />} />
             <Route path="/admin" element={<Administracija />} />

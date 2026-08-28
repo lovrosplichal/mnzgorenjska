@@ -86,7 +86,7 @@ export default function MojaEkipa() {
         setImeEkipe(moja.name)
         const { data: nabor } = await supabase
           .from('fantasy_roster')
-          .select('player_id, is_starter, is_captain, is_vice')
+          .select('player_id, is_starter, is_captain, is_vice, buy_value')
           .eq('fantasy_team_id', moja.id)
         setIzbrani(nabor ?? [])
 
@@ -117,7 +117,12 @@ export default function MojaEkipa() {
   )
 
   const proracun = ekipa?.budget ?? PRORACUN
-  const porabljeno = izbraniPodrobno.reduce((v, s) => v + Number(s.value ?? 0), 0)
+  // Proračun se meri po ceni ob nakupu: če igralec med sezono podraži, to
+  // lastniku ne sme razbiti že sestavljenega kadra.
+  const porabljeno = izbraniPodrobno.reduce(
+    (v, s) => v + Number(s.buy_value ?? s.value ?? 0),
+    0,
+  )
   const preostalo = proracun - porabljeno
   const napakeEkipe = preveriEkipo(izbraniPodrobno, proracun)
   const prvi = izbraniPodrobno.filter((s) => s.is_starter)
@@ -141,6 +146,7 @@ export default function MojaEkipa() {
         is_starter: igralec.position ? lahkoZacne(igralec.position, prvi) : false,
         is_captain: false,
         is_vice: false,
+        buy_value: Number(igralec.value ?? 0),
       },
     ])
   }
@@ -238,6 +244,7 @@ export default function MojaEkipa() {
           is_captain: !!s.is_captain,
           is_vice: !!s.is_vice,
           bench_order: s.is_starter ? null : ++naKlopi,
+          buy_value: s.buy_value ?? poId[s.player_id]?.value ?? null,
         })),
       )
       if (error) return setNapaka(error.message)

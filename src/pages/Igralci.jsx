@@ -215,23 +215,16 @@ export default function Igralci() {
                       logo={i.team_logo}
                       velikost={24}
                     />
-                    {/* Pozicija je pogosto le ugibanje — klik pelje na
-                        glasovanje, kjer jo lahko kdorkoli popravi. */}
-                    <Link
-                      to="/pozicije"
-                      title={
-                        i.position
-                          ? 'Ni prav? Popravi pozicijo'
-                          : 'Pozicija ni znana — pomagaj jo določiti'
-                      }
-                      className={`znacka ${razredPozicije(i.position)} hover:ring-2`}
-                    >
+                    <span className={`znacka ${razredPozicije(i.position)}`}>
                       {KRATKA_POZICIJA[i.position] ?? '?'}
-                    </Link>
+                    </span>
                     <div className="min-w-0">
-                      <div className="truncate font-semibold">
+                      <Link
+                        to={`/igralec/${i.id}`}
+                        className="block truncate font-semibold hover:text-gnl-300"
+                      >
                         {prikazniIme(i.full_name)}
-                      </div>
+                      </Link>
                       <div className="text-xs text-slate-500">
                         {i.team_short} · {i.matches} tekem
                       </div>

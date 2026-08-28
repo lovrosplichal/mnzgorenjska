@@ -245,13 +245,13 @@ function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
               izZapisnika
                 ? 'Iz zapisnika — vratar je označen z (V)'
                 : ugibano
-                  ? 'Ugibanje iz lanske statistike — glasovanje ga povozi'
+                  ? 'Pozicija še ni potrjena — glasovanje jo popravi'
                   : 'Potrdila skupnost'
             }
           >
             {IKONA[igralec.position]} {IME_POZICIJE[igralec.position]}
             {izZapisnika && ' · zapisnik'}
-            {ugibano && ' · ugibanje'}
+            {ugibano && ' · ni potrjeno'}
           </span>
         )}
       </div>
@@ -259,7 +259,7 @@ function IgralecKartica({ igralec, glasovi, mojGlas, omogoceno, onGlasuj }) {
       {!zaklenjeno && potrjeno && (
         <p className="mt-2 text-xs text-slate-500">
           {ugibano
-            ? 'Pozicija je ugibanje iz statistike — če ni prav, klikni pravo.'
+            ? 'Pozicija še ni potrjena — če ni prava, klikni pravo.'
             : 'Pozicijo je določila skupnost — z glasovi jo je mogoče popraviti.'}
         </p>
       )}

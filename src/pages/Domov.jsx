@@ -3,10 +3,13 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PRAVILA_OPIS } from '../lib/tockovanje'
 import { prikazniIme, formatirajTocke } from '../lib/pomozno'
+import Grb from '../components/Grb'
 
 export default function Domov() {
   const [stat, setStat] = useState(null)
   const [zvezde, setZvezde] = useState([])
+  const [krog, setKrog] = useState(null)
+  const [krogNajboljsi, setKrogNajboljsi] = useState([])
 
   useEffect(() => {
     async function nalozi() {
@@ -15,10 +18,12 @@ export default function Domov() {
           supabase.from('matches').select('id', { count: 'exact', head: true }),
           supabase.from('players').select('id', { count: 'exact', head: true }),
           supabase.from('goals').select('id', { count: 'exact', head: true }),
+          // Brez pozicije ni več nikogar; skupnost potrjuje tiste, ki jo imajo
+          // le predlagano iz statistike.
           supabase
             .from('players')
             .select('id', { count: 'exact', head: true })
-            .is('position', null),
+            .eq('position_source', 'ugibanje'),
           supabase
             .from('goals')
             .select('id', { count: 'exact', head: true })
@@ -38,6 +43,24 @@ export default function Domov() {
         brezAsistence: brezAsistence.count ?? 0,
       })
       setZvezde(top.data ?? [])
+
+      // Kdo je bil najboljši v zadnjem odigranem krogu.
+      const { data: zadnji } = await supabase
+        .from('zadnji_odigrani_krog')
+        .select('id, season, number, played_on')
+        .maybeSingle()
+      setKrog(zadnji ?? null)
+      if (zadnji) {
+        const { data: najboljsi } = await supabase
+          .from('krog_najboljsi')
+          .select(
+            'player_id, full_name, position, team_name, team_short, team_logo, points, minutes, price_delta, rank',
+          )
+          .eq('round_id', zadnji.id)
+          .order('points', { ascending: false })
+          .limit(5)
+        setKrogNajboljsi(najboljsi ?? [])
+      }
     }
     nalozi()
   }, [])
@@ -124,15 +147,69 @@ export default function Domov() {
                 <span className="text-3xl">📍</span>
                 <div className="min-w-0">
                   <div className="font-bold">
-                    {stat.brezPozicije} igralcev brez pozicije
+                    {stat.brezPozicije} igralcev čaka potrditev pozicije
                   </div>
                   <div className="text-sm text-slate-400">
-                    Zapisnik označi le vratarja — ostalo določiš ti
+                    Zapisnik označi le vratarja — ostalo potrdi skupnost
                   </div>
                 </div>
               </Link>
             )}
           </div>
+        </section>
+      )}
+
+      {/* najboljši v zadnjem krogu */}
+      {krogNajboljsi.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-bold">Najboljši v zadnjem krogu</h2>
+            <span className="text-sm text-slate-500">
+              {krog?.number}. krog · {krog?.season}
+            </span>
+          </div>
+          <ul className="space-y-2">
+            {krogNajboljsi.map((z, i) => (
+              <li
+                key={z.player_id}
+                className={`kartica kartica-hover flex items-center gap-2 p-3 sm:gap-3 ${
+                  i === 0 ? 'ring-1 ring-amber-300/40' : ''
+                }`}
+              >
+                <span className="w-6 text-center text-lg">
+                  {i === 0 ? '🏆' : i + 1}
+                </span>
+                <Grb
+                  ime={z.team_name}
+                  kratko={z.team_short}
+                  logo={z.team_logo}
+                  velikost={22}
+                />
+                <Link
+                  to={`/igralec/${z.player_id}`}
+                  className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
+                >
+                  {prikazniIme(z.full_name)}
+                </Link>
+                <span className="hidden text-xs text-slate-500 sm:inline">
+                  {z.minutes} min
+                </span>
+                {Number(z.price_delta) !== 0 && (
+                  <span
+                    className={`text-xs font-bold ${
+                      Number(z.price_delta) > 0 ? 'text-gnl-300' : 'text-rose-400'
+                    }`}
+                  >
+                    {Number(z.price_delta) > 0 ? '▲' : '▼'}
+                    {Math.abs(Number(z.price_delta)).toFixed(1)}
+                  </span>
+                )}
+                <span className="w-12 text-right font-black tabular-nums">
+                  {formatirajTocke(z.points)}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
