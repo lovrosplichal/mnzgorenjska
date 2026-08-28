@@ -5,3 +5,9 @@ dist
 .DS_Store
 *.log
 scripts/.predpomnilnik/
+
+.vercel
+.env*
+
+# Produkcijski javni ključi so del repozitorija — brez njih deploy ne ve za bazo.
+!.env.production

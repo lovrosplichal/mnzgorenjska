@@ -44,8 +44,8 @@ export default function Navbar() {
       <nav className="mx-auto max-w-5xl px-4 py-3">
         <div className="flex items-center gap-3">
           <NavLink to="/" className="flex items-center gap-2 font-black">
-            <span className="text-xl">⚽</span>
-            <span className="hidden naslov sm:inline">Gorenjska Fantasy</span>
+            <img src="/logo/slff-grb.png" alt="" className="h-8 w-8" />
+            <span className="naslov">SLFF</span>
           </NavLink>
 
           <div className="ml-auto hidden items-center gap-1 text-sm lg:flex">

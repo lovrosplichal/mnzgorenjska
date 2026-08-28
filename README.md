@@ -16,7 +16,11 @@ Pri **5 glasovih** za istega kandidata se podatek potrdi in začne šteti.
 
 ## Ključne funkcionalnosti
 
-- **Sestavljanje ekipe** — 15 igralcev, 11 v prvi postavi, največ 3 iz kluba, proračun 100.
+- **Sestavljanje ekipe** — igrišče s prvo postavo in klopjo: 15 igralcev (2 vratarja,
+  5 branilcev, 5 vezistov, 3 napadalci), 11 v prvi postavi, največ 3 iz kluba, proračun 100.
+- **Kapetan** — trak prinese trojne točke; če kapetan ne igra, ga prevzame namestnik.
+- **Samodejne menjave** — igralca prve postave brez minut zamenja rezervni iste pozicije.
+- **Pripomoček Klop+** — enkrat na sezono v izbranem krogu štejejo tudi točke klopi.
 - **Glasovanje o asistencah** — skupnost pove, kdo je podal; pri 5 glasovih se potrdi.
 - **Glasovanje o pozicijah** — zapisnik pozicij ne pove, zato jih določi skupnost.
 - **Točkovanje** — po pravilih lige iz statistike zapisnikov (glej spodaj).
@@ -74,6 +78,10 @@ Določena so v [`src/lib/pravila.js`](src/lib/pravila.js), da so na enem mestu:
 | Pravilo | Vrednost |
 |---|---|
 | Velikost ekipe | 15 igralcev |
+| Vratarji v kadru | 2 |
+| Branilci v kadru | 5 |
+| Vezisti v kadru | 5 |
+| Napadalci v kadru | 3 |
 | Prva postava | 11 igralcev |
 | Vratarji v prvi postavi | 1 |
 | Branilci v prvi postavi | 3–5 |
@@ -81,8 +89,14 @@ Določena so v [`src/lib/pravila.js`](src/lib/pravila.js), da so na enem mestu:
 | Napadalci v prvi postavi | 1–3 |
 | Največ igralcev iz istega kluba | 3 |
 | Proračun | 100.0 |
+| Množitelj kapetana | 3× |
+| Pripomoček Klop+ | enkrat na sezono |
+| Rok kroga | `rounds.deadline_at` (privzeto 10:00 na dan tekme) |
 
-Točke zbirajo le igralci v prvi postavi.
+Kvota kadra je enaka kot v Premier League Fantasy. Točke zbira prva postava; igralca
+brez odigrane minute samodejno zamenja rezervni igralec iste pozicije, kapetan pa šteje
+trikratno. V krogu, za katerega je vložen Klop+, se prištejejo še točke vseh štirih
+rezervnih igralcev.
 
 ## Podatkovni model
 
@@ -95,12 +109,19 @@ Točke zbirajo le igralci v prvi postavi.
 | `goals` | Posamezni gol (strelec, minuta, 11m, avtogol, potrjena asistenca) |
 | `assist_votes` | Glasovi skupnosti o asistenci |
 | `position_votes` | Glasovi skupnosti o poziciji |
-| `fantasy_teams` / `fantasy_roster` | Ekipe uporabnikov in njihovi nabori |
+| `fantasy_teams` / `fantasy_roster` | Ekipe uporabnikov in njihovi nabori (kapetan, namestnik, vrstni red klopi) |
+| `fantasy_chips` | Vloženi pripomočki ekipe (`klop_plus`) |
+| `fantasy_lineups` | Posnetek postave ob roku kroga — po njem preteklih krogov ni več mogoče popravljati |
+| `teams.logo_url` | Grb kluba; brez njega aplikacija nariše ščit z začetnicami |
 | `player_scores` | Točke igralca po krogih |
 | `settings` | Pragova glasov (privzeto 5) |
 
-Pogledi: `appearance_points` (točke nastopa), `player_overview`,
-`player_season_stats`, `fantasy_team_standings`, `fantasy_team_budget`.
+Pogledi: `appearance_points` (točke nastopa), `player_overview`, `player_season_stats`,
+`player_standings` (lestvica igralcev: točke, forma, na tekmo, izbranost),
+`minute_kroga`, `fantasy_round_points` (točke ekipe po krogih, z menjavami in kapetanom),
+`fantasy_team_standings`, `fantasy_team_budget`.
+Funkcija `ucinkovita_postava(ekipa, krog)` vrne igralce, ki v krogu dejansko prinesejo
+točke, in njihov množitelj.
 
 ### Varnost (RLS)
 
