@@ -21,17 +21,18 @@ export default function Navbar() {
   const [cakaGlasov, setCakaGlasov] = useState(0)
 
   useEffect(() => {
+    // Prikažemo le sveže odigrane tekme (zadnjih 21 dni), da lansko sezono
+    // z ~700 nedokončanimi asistencami ne visimo večno v opozorilu.
     supabase
       .from('match_assist_status')
-      .select('brez_asistence, season')
-      .order('season', { ascending: false })
+      .select('brez_asistence, played_on')
+      .gte(
+        'played_on',
+        new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10),
+      )
       .then(({ data }) => {
-        const vrstice = data ?? []
-        const tekoca = vrstice[0]?.season
         setCakaGlasov(
-          vrstice
-            .filter((v) => v.season === tekoca)
-            .reduce((v, x) => v + Number(x.brez_asistence ?? 0), 0),
+          (data ?? []).reduce((v, x) => v + Number(x.brez_asistence ?? 0), 0),
         )
       })
   }, [])

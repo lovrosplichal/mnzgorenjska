@@ -318,6 +318,34 @@ export default function MojaEkipa() {
     )
   }
 
+  async function prekliciPripomocek(chip) {
+    setNapaka(null)
+    if (!ekipa?.id) return
+    // Če je izbrani krog že odigran, preklic ne bi imel smisla — preprečimo
+    // brisanje zgodovine. Za še ne odigrane kroge je preklic dovoljen; pripomo-
+    // ček bo znova na voljo, dokler ni vpisan v že odigran krog.
+    const chipVpis = pripomocki.find((c) => c.chip === chip)
+    if (!chipVpis) return
+    const krogVpisa = krogi.find((k) => k.id === chipVpis.round_id)
+    if (krogVpisa?.played_on && new Date(krogVpisa.played_on) <= new Date()) {
+      return setNapaka(
+        'Krog je že odigran — pripomočka ni več mogoče preklicati.',
+      )
+    }
+    const { error } = await supabase
+      .from('fantasy_chips')
+      .delete()
+      .eq('fantasy_team_id', ekipa.id)
+      .eq('chip', chip)
+    if (error) return setNapaka(error.message)
+    setPripomocki(pripomocki.filter((c) => c.chip !== chip))
+    setSporocilo(
+      chip === 'wildcard'
+        ? 'Wildcard je preklican — na voljo je za drug krog.'
+        : 'Klop+ je preklican — na voljo je za drug krog.',
+    )
+  }
+
   if (loading || nalaganje)
     return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
   if (!session)
@@ -460,22 +488,36 @@ export default function MojaEkipa() {
           </div>
         </div>
 
-        <label className="block">
+        <div className="block">
           <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
             Ime ekipe
           </span>
-          <input
-            ref={imeRef}
-            value={imeEkipe}
-            onChange={(e) => setImeEkipe(e.target.value)}
-            placeholder="npr. Gorenjski Orli"
-            className={`mt-1 w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm ${
-              !imeEkipe.trim() && napaka
-                ? 'border-rose-400/60 ring-1 ring-rose-400/30'
-                : 'border-white/10'
-            }`}
-          />
-        </label>
+          {ekipa?.name ? (
+            <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2 text-sm">
+              <span className="flex-1 font-semibold text-slate-100">
+                {ekipa.name}
+              </span>
+              <span
+                title="Ime ekipe je po prvi shranitvi fiksno — enotna oznaka na lestvici in v zgodovini."
+                className="znacka bg-white/10 text-[10px] text-slate-400"
+              >
+                🔒 fiksno
+              </span>
+            </div>
+          ) : (
+            <input
+              ref={imeRef}
+              value={imeEkipe}
+              onChange={(e) => setImeEkipe(e.target.value)}
+              placeholder="npr. Gorenjski Orli"
+              className={`mt-1 w-full rounded-xl border bg-slate-900 px-3 py-2 text-sm ${
+                !imeEkipe.trim() && napaka
+                  ? 'border-rose-400/60 ring-1 ring-rose-400/30'
+                  : 'border-white/10'
+              }`}
+            />
+          )}
+        </div>
       </div>
 
       {/* Uvodni nasvet, ko ekipa še nima igralcev. */}
@@ -547,10 +589,18 @@ export default function MojaEkipa() {
                 Pripomoček Klop+
               </h3>
               {krogPripomocka ? (
-                <p className="text-sm text-gnl-300">
-                  Vložen za {krogPripomocka.number}. krog — v njem štejejo tudi
-                  točke klopi.
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm text-gnl-300">
+                    Vložen za {krogPripomocka.number}. krog — v njem štejejo tudi
+                    točke klopi.
+                  </p>
+                  <button
+                    onClick={() => prekliciPripomocek('klop_plus')}
+                    className="text-xs text-slate-400 underline hover:text-rose-400"
+                  >
+                    prekliči
+                  </button>
+                </div>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <select
@@ -582,10 +632,18 @@ export default function MojaEkipa() {
                 Pripomoček Wildcard
               </h3>
               {krogWildcard ? (
-                <p className="text-sm text-gnl-300">
-                  Vložen za {krogWildcard.number}. krog — prestopi v njem so
-                  brezplačni.
-                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm text-gnl-300">
+                    Vložen za {krogWildcard.number}. krog — prestopi v njem so
+                    brezplačni.
+                  </p>
+                  <button
+                    onClick={() => prekliciPripomocek('wildcard')}
+                    className="text-xs text-slate-400 underline hover:text-rose-400"
+                  >
+                    prekliči
+                  </button>
+                </div>
               ) : (
                 <button
                   onClick={() =>

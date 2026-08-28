@@ -25,10 +25,15 @@ export default function Domov() {
             .from('players')
             .select('id', { count: 'exact', head: true })
             .eq('position_source', 'ugibanje'),
+          // Samo tekme, ki so bile odigrane v zadnjih 21 dneh — sicer 704
+          // nerešenih iz prejšnje sezone večno visijo v obvestilu.
           supabase
             .from('match_assist_status')
-            .select('brez_asistence, season')
-            .order('season', { ascending: false }),
+            .select('brez_asistence, played_on')
+            .gte(
+              'played_on',
+              new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10),
+            ),
           supabase
             .from('player_overview')
             .select(
@@ -42,13 +47,10 @@ export default function Domov() {
         igralci: igralci.count ?? 0,
         goli: goli.count ?? 0,
         brezPozicije: brezPozicije.count ?? 0,
-        brezAsistence: (() => {
-          const vrstice = brezAsistence.data ?? []
-          const tekoca = vrstice[0]?.season
-          return vrstice
-            .filter((v) => v.season === tekoca)
-            .reduce((v, x) => v + Number(x.brez_asistence ?? 0), 0)
-        })(),
+        brezAsistence: (brezAsistence.data ?? []).reduce(
+          (v, x) => v + Number(x.brez_asistence ?? 0),
+          0,
+        ),
       })
       setZvezde(top.data ?? [])
 
