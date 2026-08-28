@@ -28,12 +28,12 @@ const POPRAVKI = [
   { ime: 'Lovro Splichal',       pozicija: 'MID', noviKlub: null },
   { ime: 'Jaša Drobnjak',        pozicija: 'FWD', noviKlub: null },
   { ime: 'Djuran Matija Čarman', pozicija: 'DEF', noviKlub: null },
-  { ime: 'Edi Japič',            pozicija: 'DEF', noviKlub: null },
+  { ime: 'Edi Japić',            pozicija: 'DEF', noviKlub: null },
   { ime: 'Matic Bertoncelj',     pozicija: 'DEF', noviKlub: null },
   { ime: 'Tine Trojanšek',       pozicija: 'DEF', noviKlub: null },
   { ime: 'Nejc Cvitkovič',       pozicija: 'DEF', noviKlub: null },
   { ime: 'Tim Vrečič',           pozicija: 'DEF', noviKlub: null },
-  { ime: 'Nesad Bajramovič',     pozicija: 'DEF', noviKlub: null },
+  { ime: 'Nesad Bajramović',     pozicija: 'DEF', noviKlub: null },
   { ime: 'Žiga Bizant',          pozicija: 'DEF', noviKlub: null },
   { ime: 'Tim Matič',            pozicija: 'MID', noviKlub: null },
   { ime: 'Ažbe Repič',           pozicija: 'MID', noviKlub: null },
@@ -41,7 +41,7 @@ const POPRAVKI = [
   { ime: 'Žan Peklaj',           pozicija: 'MID', noviKlub: null },
   { ime: 'Gregor Kern',          pozicija: 'FWD', noviKlub: null },
   { ime: 'Gal Ribnikar',         pozicija: 'MID', noviKlub: 'Preddvor' },
-  { ime: 'Simon Čarman Duran',   pozicija: 'FWD', noviKlub: null },
+  { ime: 'Čarman Djuran Simon',  pozicija: 'FWD', noviKlub: null },
   // Bor Repič je bil pri drugem klubu — premakni v Eltron Preddvor.
   { ime: 'Bor Repič',            pozicija: null,  noviKlub: 'Preddvor' },
   // Ročno postavljena vrednost — nastavi tudi value_locked=true, da naslednji
@@ -68,8 +68,8 @@ const NOVI_IGRALCI = [
 const NEAKTIVNI = [
   'Alex Marolt Nagode',
   'Filip Iliev',
-  'Mihael Jovanov',
-  'Gašper Fender',
+  'Mihail Jovanov', // v DB "Jovanov Mihail" (ne Mihael)
+  // 'Gašper Fender' — v bazi ga ni, preskočeno
 ]
 
 // --- okolje -----------------------------------------------------------------
@@ -124,10 +124,15 @@ function najdiKlub(kljuc) {
 let uspehov = 0
 let opozoril = 0
 for (const p of POPRAVKI) {
-  const { data: kandidati, error: eI } = await db
+  // Baza hrani ime kot "Priimek Ime" — iskanje je neodvisno od vrstnega
+  // reda: vsak del imena mora biti v full_name.
+  let q = db
     .from('player_overview')
     .select('id, full_name, team_id, team_name, position, position_source, value')
-    .ilike('full_name', `%${p.ime}%`)
+  for (const del of p.ime.split(/\s+/).filter(Boolean)) {
+    q = q.ilike('full_name', `%${del}%`)
+  }
+  const { data: kandidati, error: eI } = await q
   if (eI) {
     console.log(`✗ ${p.ime}: napaka pri iskanju — ${eI.message}`)
     opozoril++
@@ -203,7 +208,8 @@ for (const p of POPRAVKI) {
 // --- novi igralci -----------------------------------------------------------
 let dodanih = 0
 for (const n of NOVI_IGRALCI) {
-  const polnoIme = `${n.prvo} ${n.priimek}`.trim()
+  // Baza uporablja konvencijo "Priimek Ime".
+  const polnoIme = `${n.priimek} ${n.prvo}`.trim()
 
   // Ali igralec s tem imenom in klubom že obstaja? Če ja, preskočimo (raje
   // ga admin popravi kot da naredimo dvojnika).
@@ -250,10 +256,11 @@ for (const n of NOVI_IGRALCI) {
 // --- neaktivni --------------------------------------------------------------
 let deaktiviranih = 0
 for (const ime of NEAKTIVNI) {
-  const { data: najdeni } = await db
-    .from('player_overview')
-    .select('id, full_name, team_name')
-    .ilike('full_name', `%${ime}%`)
+  let q = db.from('player_overview').select('id, full_name, team_name')
+  for (const del of ime.split(/\s+/).filter(Boolean)) {
+    q = q.ilike('full_name', `%${del}%`)
+  }
+  const { data: najdeni } = await q
   if (!najdeni?.length) {
     console.log(`✗ ${ime}: ni najden (že odstranjen?)`)
     opozoril++
