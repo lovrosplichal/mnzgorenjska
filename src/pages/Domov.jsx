@@ -25,10 +25,9 @@ export default function Domov() {
             .select('id', { count: 'exact', head: true })
             .eq('position_source', 'ugibanje'),
           supabase
-            .from('goals')
-            .select('id', { count: 'exact', head: true })
-            .is('assist_player_id', null)
-            .eq('is_own_goal', false),
+            .from('match_assist_status')
+            .select('brez_asistence, season')
+            .order('season', { ascending: false }),
           supabase
             .from('player_overview')
             .select(
@@ -42,7 +41,13 @@ export default function Domov() {
         igralci: igralci.count ?? 0,
         goli: goli.count ?? 0,
         brezPozicije: brezPozicije.count ?? 0,
-        brezAsistence: brezAsistence.count ?? 0,
+        brezAsistence: (() => {
+          const vrstice = brezAsistence.data ?? []
+          const tekoca = vrstice[0]?.season
+          return vrstice
+            .filter((v) => v.season === tekoca)
+            .reduce((v, x) => v + Number(x.brez_asistence ?? 0), 0)
+        })(),
       })
       setZvezde(top.data ?? [])
 
@@ -114,6 +119,32 @@ export default function Domov() {
           </div>
         </div>
       </section>
+
+      {/* glasovanje o asistencah je edino, kar liga potrebuje od ljudi */}
+      {stat && stat.brezAsistence > 0 && (
+        <Link
+          to="/glasovanje"
+          className="block overflow-hidden rounded-3xl bg-gradient-to-r from-amber-500/20 to-rose-500/10
+                     p-5 ring-1 ring-amber-400/40 transition hover:ring-amber-300/70 sm:p-6"
+        >
+          <div className="flex flex-wrap items-center gap-4">
+            <span className="text-4xl sm:text-5xl">🅰️</span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-xl font-black text-amber-100 sm:text-2xl">
+                {stat.brezAsistence}{' '}
+                {stat.brezAsistence === 1 ? 'gol čaka' : 'golov čaka'} na
+                asistenco
+              </h2>
+              <p className="mt-1 text-sm text-amber-100/80">
+                Zapisniki asistenc ne beležijo — določi jih skupnost. Brez tvojih
+                glasov podajalci ne dobijo <strong>+3 točk</strong>, tvoja ekipa
+                pa ostane brez njih.
+              </p>
+            </div>
+            <span className="gumb-glavni shrink-0">Glasuj zdaj →</span>
+          </div>
+        </Link>
+      )}
 
       {/* številke */}
       {stat && (

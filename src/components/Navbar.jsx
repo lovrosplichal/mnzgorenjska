@@ -16,6 +16,25 @@ export default function Navbar() {
   const { session } = useAuth()
   const [jeAdmin, setJeAdmin] = useState(false)
   const [odprt, setOdprt] = useState(false)
+  // Koliko golov tekoče sezone še čaka na asistenco — značka ob povezavi je
+  // najzanesljivejši opomnik, da liga brez glasov ne deluje.
+  const [cakaGlasov, setCakaGlasov] = useState(0)
+
+  useEffect(() => {
+    supabase
+      .from('match_assist_status')
+      .select('brez_asistence, season')
+      .order('season', { ascending: false })
+      .then(({ data }) => {
+        const vrstice = data ?? []
+        const tekoca = vrstice[0]?.season
+        setCakaGlasov(
+          vrstice
+            .filter((v) => v.season === tekoca)
+            .reduce((v, x) => v + Number(x.brez_asistence ?? 0), 0),
+        )
+      })
+  }, [])
 
   useEffect(() => {
     if (!session) {
@@ -52,6 +71,11 @@ export default function Navbar() {
             {vse.map((p) => (
               <NavLink key={p.pot} to={p.pot} className={slog} end={p.pot === '/'}>
                 {p.naslov}
+                {p.pot === '/glasovanje' && cakaGlasov > 0 && (
+                  <span className="ml-1.5 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[10px] font-black text-amber-200">
+                    {cakaGlasov}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>
@@ -60,7 +84,7 @@ export default function Navbar() {
             {session ? (
               <button
                 onClick={() => supabase.auth.signOut()}
-                className="rounded-lg px-3 py-1.5 text-slate-400 hover:text-slate-100"
+                className="rounded-xl px-3 py-2.5 text-slate-400 hover:text-slate-100"
               >
                 Odjava
               </button>
@@ -75,14 +99,16 @@ export default function Navbar() {
             onClick={() => setOdprt(!odprt)}
             aria-label="Meni"
             aria-expanded={odprt}
-            className="rounded-lg px-2 py-1 text-slate-300 lg:hidden"
+            className="flex h-11 w-11 items-center justify-center rounded-xl border
+                       border-white/15 bg-white/5 text-2xl leading-none text-slate-200
+                       active:scale-95 lg:hidden"
           >
             ☰
           </button>
         </div>
 
         {odprt && (
-          <div className="animiraj-vstop mt-3 grid grid-cols-2 gap-1 border-t border-white/10 pt-3 text-sm lg:hidden">
+          <div className="animiraj-vstop mt-3 grid grid-cols-2 gap-1.5 border-t border-white/10 pt-3 text-base lg:hidden">
             {vse.map((p) => (
               <NavLink
                 key={p.pot}
@@ -92,6 +118,11 @@ export default function Navbar() {
                 onClick={() => setOdprt(false)}
               >
                 {p.naslov}
+                {p.pot === '/glasovanje' && cakaGlasov > 0 && (
+                  <span className="ml-1.5 rounded-full bg-amber-400/25 px-1.5 py-0.5 text-[10px] font-black text-amber-200">
+                    {cakaGlasov}
+                  </span>
+                )}
               </NavLink>
             ))}
           </div>
