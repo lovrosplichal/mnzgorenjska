@@ -19,6 +19,7 @@ import {
   razredPozicije,
   KRATKA_POZICIJA,
   formatirajTocke,
+  formatirajCeno,
 } from '../lib/pomozno'
 import Igrisce from '../components/Igrisce'
 import Grb from '../components/Grb'
@@ -52,58 +53,77 @@ export default function MojaEkipa() {
     }
 
     async function nalozi() {
-      const { data: vsi, error } = await supabase
-        .from('player_overview')
-        .select(
-          'id, full_name, position, team_id, team_name, team_short, team_logo, value, points, goals, minutes',
-        )
-        .order('value', { ascending: false })
+      // Vse, kar ni odvisno drugo od drugega, gre hkrati — zaporedne poizvedbe
+      // so na mobilnem omrežju pomenile nekaj sekund praznega čakanja.
+      const [
+        { data: vsi, error },
+        { data: vsiKrogi },
+        { data: naslednji },
+        { data: moja },
+        { data: nast },
+      ] = await Promise.all([
+        supabase
+          .from('player_overview')
+          .select(
+            'id, full_name, position, team_id, team_name, team_short, team_logo, value, points, goals, minutes',
+          )
+          .order('value', { ascending: false }),
+        supabase
+          .from('rounds')
+          .select('id, season, number')
+          .order('number', { ascending: true }),
+        supabase
+          .from('naslednji_krog')
+          .select('id, number, played_on, deadline_at')
+          .maybeSingle(),
+        supabase
+          .from('fantasy_teams')
+          .select('id, name, budget')
+          .eq('owner_id', session.user.id)
+          .maybeSingle(),
+        supabase
+          .from('settings')
+          .select('key, value')
+          .in('key', ['prosti_prestopi', 'kazen_prestopa']),
+      ])
       if (error) {
         setNapaka(error.message)
         setNalaganje(false)
         return
       }
       setIgralci(vsi ?? [])
-
-      const { data: vsiKrogi } = await supabase
-        .from('rounds')
-        .select('id, season, number')
-        .order('number', { ascending: true })
       setKrogi(vsiKrogi ?? [])
-
-      const { data: naslednji } = await supabase
-        .from('naslednji_krog')
-        .select('id, number, played_on, deadline_at')
-        .maybeSingle()
       setNaslednjiKrog(naslednji ?? null)
-
-      const { data: moja } = await supabase
-        .from('fantasy_teams')
-        .select('id, name, budget')
-        .eq('owner_id', session.user.id)
-        .maybeSingle()
+      if (nast?.length) {
+        const m = Object.fromEntries(nast.map((n) => [n.key, Number(n.value)]))
+        setPravila({
+          prosti: m.prosti_prestopi ?? 3,
+          kazen: m.kazen_prestopa ?? 4,
+        })
+      }
 
       if (moja) {
         setEkipa(moja)
         setImeEkipe(moja.name)
-        const { data: nabor } = await supabase
-          .from('fantasy_roster')
-          .select('player_id, is_starter, is_captain, is_vice, buy_value')
-          .eq('fantasy_team_id', moja.id)
+        const [{ data: nabor }, { data: chips }, { data: zadnjiPosnetek }] =
+          await Promise.all([
+            supabase
+              .from('fantasy_roster')
+              .select('player_id, is_starter, is_captain, is_vice, buy_value')
+              .eq('fantasy_team_id', moja.id),
+            supabase
+              .from('fantasy_chips')
+              .select('chip, round_id')
+              .eq('fantasy_team_id', moja.id),
+            // Zadnja zaklenjena postava je izhodišče za štetje prestopov.
+            supabase
+              .from('fantasy_lineups')
+              .select('round_id, player_id')
+              .eq('fantasy_team_id', moja.id)
+              .order('round_id', { ascending: false }),
+          ])
         setIzbrani(nabor ?? [])
-
-        const { data: chips } = await supabase
-          .from('fantasy_chips')
-          .select('chip, round_id')
-          .eq('fantasy_team_id', moja.id)
         setPripomocki(chips ?? [])
-
-        // Zadnja zaklenjena postava je izhodišče za štetje prestopov.
-        const { data: zadnjiPosnetek } = await supabase
-          .from('fantasy_lineups')
-          .select('round_id, player_id')
-          .eq('fantasy_team_id', moja.id)
-          .order('round_id', { ascending: false })
         if (zadnjiPosnetek?.length) {
           const zadnjiKrog = zadnjiPosnetek[0].round_id
           setZaklenjenaPostava(
@@ -114,17 +134,6 @@ export default function MojaEkipa() {
         }
       }
 
-      const { data: nast } = await supabase
-        .from('settings')
-        .select('key, value')
-        .in('key', ['prosti_prestopi', 'kazen_prestopa'])
-      if (nast?.length) {
-        const m = Object.fromEntries(nast.map((n) => [n.key, Number(n.value)]))
-        setPravila({
-          prosti: m.prosti_prestopi ?? 3,
-          kazen: m.kazen_prestopa ?? 4,
-        })
-      }
       setNalaganje(false)
     }
     nalozi()
@@ -377,15 +386,15 @@ export default function MojaEkipa() {
 
       {/* proračun in kvote */}
       <div className="kartica grid grid-cols-3 gap-2 p-3 sm:gap-3 sm:p-4">
-        <Merilo oznaka="Proračun" vrednost={formatirajTocke(proracun)} />
+        <Merilo oznaka="Proračun" vrednost={formatirajCeno(proracun)} />
         <Merilo
           oznaka="Porabljeno"
-          vrednost={formatirajTocke(porabljeno)}
+          vrednost={formatirajCeno(porabljeno)}
           barva={porabljeno > proracun ? 'text-rose-400' : undefined}
         />
         <Merilo
           oznaka="Ostane"
-          vrednost={formatirajTocke(preostalo)}
+          vrednost={formatirajCeno(preostalo)}
           barva={preostalo < 0 ? 'text-rose-400' : 'text-gnl-300'}
         />
         <div className="col-span-3">
@@ -719,8 +728,8 @@ function TrgIgralcev({
                   {i.team_short} · {i.goals} golov · {i.minutes} min
                 </div>
               </div>
-              <span className="w-9 text-right text-sm font-black tabular-nums text-gnl-300">
-                {formatirajTocke(i.value)}
+              <span className="w-16 text-right text-sm font-black tabular-nums text-gnl-300">
+                {formatirajCeno(i.value)}
               </span>
               <button
                 onClick={() => naPreklop(i)}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PRAVILA_OPIS } from '../lib/tockovanje'
-import { prikazniIme, formatirajTocke } from '../lib/pomozno'
+import { prikazniIme, formatirajTocke, formatirajCeno } from '../lib/pomozno'
 import Grb from '../components/Grb'
 
 export default function Domov() {
@@ -68,8 +68,18 @@ export default function Domov() {
   return (
     <div className="space-y-10">
       {/* uvod */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-gnl-800/60 via-slate-900 to-slate-950 p-8 ring-1 ring-white/10">
-        <div className="igrisce absolute inset-0 opacity-40" aria-hidden />
+      <section className="relative overflow-hidden rounded-3xl p-6 ring-1 ring-white/10 sm:p-8">
+        {/* Amaterska tekma pod reflektorji — natanko to, o čemer je liga. */}
+        <img
+          src="/foto/igrisce.jpg"
+          alt=""
+          aria-hidden
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+        <div
+          className="absolute inset-0 bg-gradient-to-br from-slate-950/85 via-slate-950/75 to-gnl-900/80"
+          aria-hidden
+        />
         <div className="relative space-y-4">
           <img
             src="/logo/slff-grb.png"
@@ -230,8 +240,8 @@ export default function Domov() {
                 <span className="znacka bg-rose-400/15 text-rose-200">
                   {z.goals} ⚽
                 </span>
-                <span className="w-14 text-right font-black tabular-nums text-gnl-300">
-                  {formatirajTocke(z.value)}
+                <span className="w-20 text-right font-black tabular-nums text-gnl-300">
+                  {formatirajCeno(z.value)}
                 </span>
               </li>
             ))}

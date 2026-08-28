@@ -30,3 +30,12 @@ export const formatirajTocke = (t) => {
   const n = Number(t ?? 0)
   return Number.isInteger(n) ? String(n) : n.toFixed(1)
 }
+
+/**
+ * Cena v obliki valute: 5.5 -> "5,5 M€". Točke in cene se sicer izpisujejo z
+ * isto funkcijo in ju je bilo na zaslonu težko ločiti.
+ */
+export const formatirajCeno = (v) => {
+  const n = Number(v ?? 0)
+  return `${n.toFixed(1).replace('.', ',')} M€`
+}

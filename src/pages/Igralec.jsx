@@ -8,6 +8,7 @@ import {
   KRATKA_POZICIJA,
   IME_POZICIJE,
   formatirajTocke,
+  formatirajCeno,
 } from '../lib/pomozno'
 import Grb from '../components/Grb'
 
@@ -152,7 +153,7 @@ export default function Igralec() {
         </div>
         <div className="text-right">
           <div className="text-2xl font-black tabular-nums text-gnl-300">
-            {formatirajTocke(igralec.value)}
+            {formatirajCeno(igralec.value)}
           </div>
           <div className="text-xs uppercase tracking-wide text-slate-500">
             cena
@@ -313,8 +314,8 @@ export default function Igralec() {
                 >
                   <span className="text-slate-400">{c.rounds?.number}. krog</span>
                   <span className="tabular-nums">
-                    {formatirajTocke(c.old_value)} →{' '}
-                    <strong>{formatirajTocke(c.new_value)}</strong>
+                    {formatirajCeno(c.old_value)} →{' '}
+                    <strong>{formatirajCeno(c.new_value)}</strong>
                     <span
                       className={`ml-2 ${d > 0 ? 'text-gnl-300' : 'text-rose-400'}`}
                     >

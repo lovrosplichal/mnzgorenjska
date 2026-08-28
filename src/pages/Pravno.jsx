@@ -72,6 +72,23 @@ export default function Pravno() {
       </section>
 
       <section className="space-y-3">
+        <h2 className="text-lg font-bold">Fotografije</h2>
+        <p className="text-slate-300">
+          Fotografija na naslovnici je delo Abigail Keenan in je objavljena na{' '}
+          <a
+            href="https://unsplash.com/photos/1a6deb1dec8d"
+            target="_blank"
+            rel="noreferrer"
+            className="text-gnl-300 underline"
+          >
+            Unsplashu
+          </a>{' '}
+          pod njihovo licenco, ki dovoljuje prosto uporabo. Ne prikazuje
+          igralcev 1. GNL.
+        </p>
+      </section>
+
+      <section className="space-y-3">
         <h2 className="text-lg font-bold">Tvoje pravice</h2>
         <p className="text-slate-300">
           Kadarkoli lahko zahtevaš izbris računa in vseh svojih podatkov ali

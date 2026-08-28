@@ -6,7 +6,11 @@
 // vrstici (5 × 3.4rem + razmiki gredo v 360 px), zato so kartice majhne in se
 // od `sm` navzgor povečajo.
 import { POZICIJE, VRSTNI_RED } from '../lib/pravila'
-import { KRATKA_POZICIJA, prikazniIme, formatirajTocke } from '../lib/pomozno'
+import {
+  KRATKA_POZICIJA,
+  prikazniIme,
+  formatirajCeno,
+} from '../lib/pomozno'
 import Grb from './Grb'
 
 const BARVA_DRESA = {
@@ -65,7 +69,7 @@ function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
             logo={igralec.team_logo}
             velikost={11}
           />
-          {formatirajTocke(igralec.value)}
+          {formatirajCeno(igralec.value)}
         </div>
       </button>
 

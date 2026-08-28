@@ -5,6 +5,7 @@ import {
   razredPozicije,
   KRATKA_POZICIJA,
   formatirajTocke,
+  formatirajCeno,
 } from '../lib/pomozno'
 import { Link } from 'react-router-dom'
 import { POZICIJE } from '../lib/pravila'
@@ -17,8 +18,8 @@ const STOLPCI = [
   { kljuc: 'form', naslov: 'Forma', opis: 'Zadnji trije krogi' },
   { kljuc: 'last_round', naslov: 'Zadnji krog', opis: 'Točke zadnjega kroga' },
   { kljuc: 'points_per_match', naslov: 'Na tekmo', opis: 'Točke na odigrano tekmo' },
-  { kljuc: 'points_per_value', naslov: 'Na ceno', opis: 'Točke na enoto cene' },
-  { kljuc: 'value', naslov: 'Cena', opis: 'Cena v proračunu' },
+  { kljuc: 'points_per_value', naslov: 'Na M€', opis: 'Točke na milijon evrov cene' },
+  { kljuc: 'value', naslov: 'Cena', opis: 'Cena v proračunu (v milijonih €)' },
   { kljuc: 'goals', naslov: 'Goli', opis: 'Doseženi goli' },
   { kljuc: 'minutes', naslov: 'Minute', opis: 'Odigrane minute' },
   { kljuc: 'owners', naslov: 'Izbran', opis: 'Št. fantasy ekip z igralcem' },
@@ -36,19 +37,40 @@ export default function Igralci() {
   const [sezone, setSezone] = useState([])
   const [sezona, setSezona] = useState(null)
 
-  // Sezone, ki sploh imajo odigrane tekme; privzeto odpremo tekočo.
+  // Sezone in prva stran lestvice gresta hkrati: čakanje na seznam sezon, da
+  // sploh vemo, katero lestvico naložiti, je podvojilo čas do prvega izrisa.
   useEffect(() => {
-    supabase
-      .from('sezone')
-      .select('season, odigranih, tekoca')
-      .order('season', { ascending: false })
-      .then(({ data, error }) => {
-        if (error) return setNapaka(error.message)
-        const vse = data ?? []
-        setSezone(vse)
-        const tekoca = vse.find((s) => s.tekoca && s.odigranih > 0)
-        setSezona((tekoca ?? vse.find((s) => s.odigranih > 0) ?? vse[0])?.season)
-      })
+    async function nalozi() {
+      const [{ data: vse, error }, { data: privzeta }] = await Promise.all([
+        supabase
+          .from('sezone')
+          .select('season, odigranih, tekoca')
+          .order('season', { ascending: false }),
+        supabase
+          .from('player_season_standings')
+          .select(
+            'id, full_name, position, team_id, team_name, team_short, team_logo, value, season, points, form, last_round, points_per_match, points_per_value, owners, goals, minutes, matches, clean_sheets, rank',
+          )
+          .order('points', { ascending: false })
+          .limit(500),
+      ])
+      if (error) return setNapaka(error.message)
+      const sezone = vse ?? []
+      setSezone(sezone)
+      const izbrana =
+        (sezone.find((s) => s.tekoca && s.odigranih > 0) ??
+          sezone.find((s) => s.odigranih > 0) ??
+          sezone[0])?.season
+      setSezona(izbrana)
+      // Iz enega prenosa vzamemo vrstice izbrane sezone; ob preklopu sezone
+      // spodnji učinek po potrebi donese ostalo.
+      const zeImamo = (privzeta ?? []).filter((i) => i.season === izbrana)
+      if (zeImamo.length) {
+        setIgralci(zeImamo)
+        setNalaganje(false)
+      }
+    }
+    nalozi()
   }, [])
 
   useEffect(() => {
@@ -247,7 +269,7 @@ export default function Igralci() {
                   {formatirajTocke(i.points_per_value)}
                 </td>
                 <td className="px-2 py-2 text-right font-bold tabular-nums text-gnl-300">
-                  {formatirajTocke(i.value)}
+                  {formatirajCeno(i.value)}
                 </td>
                 <td className="px-2 py-2 text-right tabular-nums text-slate-400">
                   {i.goals}
