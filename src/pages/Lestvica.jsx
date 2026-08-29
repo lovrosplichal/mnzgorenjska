@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { formatirajTocke } from '../lib/pomozno'
 
@@ -8,6 +8,9 @@ export default function Lestvica() {
   const [ekipe, setEkipe] = useState([])
   const [krog, setKrog] = useState(null)
   const [krogLestvica, setKrogLestvica] = useState([])
+  const [vsiKrogiOdigrani, setVsiKrogiOdigrani] = useState([]) // [{id, number, season}]
+  const [odigraneTocke, setOdigraneTocke] = useState([]) // fantasy_round_standings rows
+  const [odKroga, setOdKroga] = useState(1) // filter "od kroga N naprej"
   const [nalaganje, setNalaganje] = useState(true)
   const [napaka, setNapaka] = useState(null)
 
@@ -31,6 +34,23 @@ export default function Lestvica() {
         .maybeSingle()
       setKrog(zadnji ?? null)
       if (!zadnji) return
+
+      // Vsi odigrani krogi te sezone (za selektor "od kroga N").
+      const { data: krogi } = await supabase
+        .from('rounds')
+        .select('id, number, season')
+        .eq('season', zadnji.season)
+        .order('number', { ascending: true })
+      const idsOdigranih = new Set()
+      // Odigran = ima fantasy_round_standings vrstice
+      const { data: vseTocke } = await supabase
+        .from('fantasy_round_standings')
+        .select('round_id, fantasy_team_id, team_name, owner_name, points, penalty, transfers')
+      for (const t of vseTocke ?? []) idsOdigranih.add(t.round_id)
+      const odigraniKrogi = (krogi ?? []).filter((k) => idsOdigranih.has(k.id))
+      setVsiKrogiOdigrani(odigraniKrogi)
+      setOdigraneTocke(vseTocke ?? [])
+
       const { data } = await supabase
         .from('fantasy_round_standings')
         .select('fantasy_team_id, team_name, owner_name, points, transfers, penalty, rank')
@@ -41,6 +61,30 @@ export default function Lestvica() {
     }
     nalozi()
   }, [])
+
+  // Lestvica "od kroga N naprej": sešteje points - penalty za vse kroge
+  // te sezone, katerih number >= odKroga, in razvrsti ekipe.
+  const lestvicaOd = useMemo(() => {
+    if (odKroga <= 1) return null // enako kot Skupno
+    const idsOd = new Set(
+      vsiKrogiOdigrani.filter((k) => k.number >= odKroga).map((k) => k.id),
+    )
+    const skupine = new Map()
+    for (const t of odigraneTocke) {
+      if (!idsOd.has(t.round_id)) continue
+      const prej = skupine.get(t.fantasy_team_id) ?? {
+        fantasy_team_id: t.fantasy_team_id,
+        team_name: t.team_name,
+        owner_name: t.owner_name,
+        points: 0,
+        krogov: 0,
+      }
+      prej.points += Number(t.points ?? 0) - Number(t.penalty ?? 0)
+      prej.krogov += 1
+      skupine.set(t.fantasy_team_id, prej)
+    }
+    return [...skupine.values()].sort((a, b) => b.points - a.points)
+  }, [odKroga, vsiKrogiOdigrani, odigraneTocke])
 
   if (nalaganje)
     return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
@@ -113,36 +157,85 @@ export default function Lestvica() {
         </section>
       )}
 
-      <h2 className="text-lg font-bold">Skupno</h2>
+      {/* Selektor "od kroga X naprej" — če se ekipa priključi kasneje, ima
+          še zmeraj svojo lestvico. */}
+      {vsiKrogiOdigrani.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h2 className="text-lg font-bold">
+              {odKroga === 1
+                ? 'Skupno (celotna sezona)'
+                : `Od ${odKroga}. kroga naprej`}
+            </h2>
+            <span className="text-xs text-slate-500">
+              Priključil si se pozneje? Izberi svoj krog in tekmuj od tam.
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setOdKroga(1)}
+              className={`znacka transition ${
+                odKroga === 1
+                  ? 'bg-gnl-500 text-slate-950'
+                  : 'bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              Celotna sezona
+            </button>
+            {vsiKrogiOdigrani
+              .filter((k) => k.number > 1)
+              .map((k) => (
+                <button
+                  key={k.id}
+                  onClick={() => setOdKroga(k.number)}
+                  className={`znacka transition ${
+                    odKroga === k.number
+                      ? 'bg-gnl-500 text-slate-950'
+                      : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  Od {k.number}. kroga
+                </button>
+              ))}
+          </div>
+        </div>
+      )}
+
       <ul className="space-y-2">
-        {ekipe.map((e, i) => (
-          <li
-            key={e.fantasy_team_id}
-            className={`kartica kartica-hover relative overflow-hidden p-4 ${
-              i === 0 ? 'ring-1 ring-amber-400/40' : ''
-            }`}
-          >
-            <span
-              className="absolute inset-y-0 left-0 bg-gnl-500/10"
-              style={{
-                width: `${(Number(e.total_points) / najvec) * 100}%`,
-              }}
-              aria-hidden
-            />
-            <div className="relative flex items-center gap-3">
-              <span className="w-8 text-center text-lg font-black text-slate-500">
-                {MEDALJE[i] ?? i + 1}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-bold">{e.team_name}</div>
-                <div className="text-xs text-slate-500">{e.owner_name}</div>
+        {(lestvicaOd ?? ekipe).map((e, i) => {
+          const tocke = lestvicaOd
+            ? Number(e.points ?? 0)
+            : Number(e.total_points ?? 0)
+          const najvecTock = lestvicaOd
+            ? Math.max(...(lestvicaOd.map((x) => Number(x.points) || 0)), 1)
+            : najvec
+          return (
+            <li
+              key={e.fantasy_team_id}
+              className={`kartica kartica-hover relative overflow-hidden p-4 ${
+                i === 0 ? 'ring-1 ring-amber-400/40' : ''
+              }`}
+            >
+              <span
+                className="absolute inset-y-0 left-0 bg-gnl-500/10"
+                style={{ width: `${(tocke / najvecTock) * 100}%` }}
+                aria-hidden
+              />
+              <div className="relative flex items-center gap-3">
+                <span className="w-8 text-center text-lg font-black text-slate-500">
+                  {MEDALJE[i] ?? i + 1}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate font-bold">{e.team_name}</div>
+                  <div className="text-xs text-slate-500">{e.owner_name}</div>
+                </div>
+                <span className="text-xl font-black tabular-nums text-gnl-300">
+                  {formatirajTocke(tocke)}
+                </span>
               </div>
-              <span className="text-xl font-black tabular-nums text-gnl-300">
-                {formatirajTocke(e.total_points)}
-              </span>
-            </div>
-          </li>
-        ))}
+            </li>
+          )
+        })}
       </ul>
     </div>
   )

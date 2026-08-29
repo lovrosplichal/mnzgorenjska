@@ -292,6 +292,30 @@ export default function Domov() {
         </section>
       )}
 
+      {/* Priključi se kadarkoli — pomiritev za novince, ki se bojijo, da so
+          prepozno začeli. */}
+      <section className="kartica overflow-hidden bg-gradient-to-r from-gnl-500/10 to-transparent p-4 ring-1 ring-gnl-400/20 sm:p-5">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-3xl">🏁</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold text-gnl-200 sm:text-lg">
+              Zamudil si štart? Nič hudega.
+            </h2>
+            <p className="mt-1 text-sm text-slate-300">
+              Vsak <strong>krog</strong> ima svojega zmagovalca, in na{' '}
+              <Link to="/lestvica" className="text-gnl-300 underline">
+                Lestvici
+              </Link>{' '}
+              lahko izbereš "<strong>Od N. kroga naprej</strong>" — tako lahko
+              zmagaš tudi če se priključiš na sredini sezone.
+            </p>
+          </div>
+          <Link to="/moja-ekipa" className="gumb-glavni shrink-0 text-sm">
+            Ustvari ekipo →
+          </Link>
+        </div>
+      </section>
+
       {/* številke — iz zgodovine (vključno z lansko sezono, ne trenutne) */}
       {stat && (
         <section className="space-y-2">
