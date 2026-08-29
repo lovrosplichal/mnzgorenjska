@@ -1,12 +1,16 @@
 name: Uvoz zapisnikov
 
-# Zapisniki MNZ Gorenjska se objavijo nekaj ur do nekaj dni po tekmi, zato
-# pobiramo enkrat dnevno. Uvoz je idempotenten: tekma z istim zapisnikom se
-# posodobi, ne podvoji. Točke krogov preračuna že sam uvoz, cene pa premakne
-# borza v bazi (pg_cron, 3:30).
+# Zapisniki MNZ Gorenjska se objavijo nekaj ur do nekaj dni po tekmi.
+# Ker se tekme 1. GNL igrajo predvsem ob petkih, sobotah in nedeljah,
+# na ta dneva pobiramo VSAKO URO (matches končane 17-19h → zapisnik
+# tipično 20-22h, včasih zjutraj). Med tednom enkrat dnevno je dovolj.
+# Uvoz je idempotenten: tekma z istim zapisnikom se posodobi, ne podvoji.
 on:
   schedule:
-    - cron: '0 5 * * *' # 5:00 UTC = 7:00 po naše
+    # Petek (5), Sobota (6), Nedelja (0) — vsako uro
+    - cron: '0 * * * 5,6,0'
+    # Ponedeljek do četrtek — enkrat, ob 5:00 UTC (7:00 po naše)
+    - cron: '0 5 * * 1-4'
   workflow_dispatch:
     inputs:
       liga:
