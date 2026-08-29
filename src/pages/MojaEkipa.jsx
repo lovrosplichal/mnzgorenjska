@@ -478,6 +478,28 @@ export default function MojaEkipa() {
         </div>
       )}
 
+      {/* Rdeč opozorilni pas, ko je roster tehnično neveljaven — jasno pove,
+          da v tem stanju NE bo dobil točk (velja od 2. kroga naprej). */}
+      {izbrani.length > 0 && napakeEkipe.length > 0 && (
+        <div className="kartica animiraj-utrip border-2 border-rose-400/60 bg-rose-500/10 p-3 sm:p-4">
+          <div className="flex items-start gap-3">
+            <span className="text-2xl">🚨</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-black text-rose-100 sm:text-base">
+                Tvoja ekipa NE ustreza pravilom
+              </div>
+              <div className="mt-1 text-xs text-rose-100/90">
+                V tem stanju za krog <strong>ne boš dobil točk</strong>. Verjetno
+                se je poziciji kakšnega igralca po glasovanju premaknila
+                (npr. iz napadalca v vezista) in ti je porušila kader.
+                Popravi ekipo — dokler ni {POZICIJE.GK.kader} GK, {POZICIJE.DEF.kader} BR,{' '}
+                {POZICIJE.MID.kader} VE, {POZICIJE.FWD.kader} NA in 11 v postavi.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sticky povzetek — proračun, napredek in shrani so vedno pri roki. */}
       <div className="kartica sticky top-0 z-30 space-y-3 p-3 shadow-lg shadow-black/30 backdrop-blur sm:top-2 sm:p-4">
         <div className="grid grid-cols-[1fr_auto] items-start gap-3">
