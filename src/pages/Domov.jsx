@@ -292,18 +292,28 @@ export default function Domov() {
         </section>
       )}
 
-      {/* številke */}
+      {/* številke — iz zgodovine (vključno z lansko sezono, ne trenutne) */}
       {stat && (
-        <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stevilka oznaka="Tekem" vrednost={stat.tekme} ikona="📋" />
-          <Stevilka oznaka="Igralcev" vrednost={stat.igralci} ikona="👥" />
-          <Stevilka oznaka="Golov" vrednost={stat.goli} ikona="⚽" />
-          <Stevilka
-            oznaka="Čaka glasov"
-            vrednost={stat.brezAsistence}
-            ikona="🗳️"
-            poudari
-          />
+        <section className="space-y-2">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-400">
+              Iz zgodovine (pretekla sezona)
+            </h2>
+            <span className="text-[10px] uppercase tracking-wide text-slate-600">
+              nova sezona še ni odigrana
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stevilka oznaka="Tekem" vrednost={stat.tekme} ikona="📋" />
+            <Stevilka oznaka="Igralcev" vrednost={stat.igralci} ikona="👥" />
+            <Stevilka oznaka="Golov" vrednost={stat.goli} ikona="⚽" />
+            <Stevilka
+              oznaka="Čaka glasov"
+              vrednost={stat.brezAsistence}
+              ikona="🗳️"
+              poudari
+            />
+          </div>
         </section>
       )}
 
@@ -338,9 +348,11 @@ export default function Domov() {
       {krogNajboljsi.length > 0 && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-xl font-bold">Najboljši v zadnjem krogu</h2>
+            <h2 className="text-xl font-bold">
+              Najboljši v zadnjem odigranem krogu
+            </h2>
             <span className="text-sm text-slate-500">
-              {krog?.number}. krog · {krog?.season}
+              {krog?.number}. krog · sezona {krog?.season}
             </span>
           </div>
           <ul className="space-y-2">
