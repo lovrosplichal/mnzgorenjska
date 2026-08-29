@@ -6,6 +6,7 @@ import { prikazniIme, formatirajTocke, formatirajCeno } from '../lib/pomozno'
 import Grb from '../components/Grb'
 import Klepet from '../components/Klepet'
 import Odstevanje from '../components/Odstevanje'
+import EnajstericaNaIgriscu from '../components/EnajstericaNaIgriscu'
 
 export default function Domov() {
   const [stat, setStat] = useState(null)
@@ -340,7 +341,7 @@ export default function Domov() {
         </section>
       )}
 
-      {/* idealna enajsterica zadnjega kroga */}
+      {/* idealna enajsterica zadnjega kroga — na igrišču */}
       {idealnaPostava.length > 0 && (
         <section className="space-y-3">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -350,42 +351,10 @@ export default function Domov() {
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            Najboljših 11 igralcev zadnjega odigranega kroga po naši statistiki
-            (1 GK, 4 BR, 4 VE, 2 NA). Pokazatelj, da se točke pravilno štejejo.
+            Najboljših 11 igralcev zadnjega odigranega kroga (1 GK, 4 BR, 4 VE,
+            2 NA). Številka pod dresom je točke, ki jih je igralec zbral.
           </p>
-          <ul className="grid gap-1.5 sm:grid-cols-2">
-            {idealnaPostava.map((p, i) => (
-              <li
-                key={p.player_id}
-                className="kartica flex items-center gap-2 p-2 text-sm"
-              >
-                <span className="w-5 text-center text-xs font-black text-slate-600">
-                  {i + 1}
-                </span>
-                <span
-                  className={`znacka poz-${p.position} text-[10px]`}
-                  title={p.position}
-                >
-                  {p.position}
-                </span>
-                <Grb
-                  ime={p.team_name}
-                  kratko={p.team_short}
-                  logo={p.team_logo}
-                  velikost={20}
-                />
-                <Link
-                  to={`/igralec/${p.player_id}`}
-                  className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
-                >
-                  {prikazniIme(p.full_name)}
-                </Link>
-                <span className="font-black tabular-nums text-gnl-300">
-                  {formatirajTocke(p.points)}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <EnajstericaNaIgriscu igralci={idealnaPostava} />
         </section>
       )}
 
