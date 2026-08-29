@@ -62,6 +62,28 @@ export default function Lestvica() {
     nalozi()
   }, [])
 
+  // Zmagovalec vsakega odigranega kroga — pregled sezone kdo je bil #1
+  // kdaj. Iz fantasy_round_standings vzamemo vrstico z max points na
+  // krog. (transfer penalty je že odšteta v .points, glede na definicijo
+  // pogleda? Če ne, preverimo tudi tam.)
+  const zmagovalciKrogov = useMemo(() => {
+    const najPoKrogu = new Map()
+    for (const t of odigraneTocke) {
+      const prej = najPoKrogu.get(t.round_id)
+      if (!prej || Number(t.points ?? 0) > Number(prej.points ?? 0)) {
+        najPoKrogu.set(t.round_id, t)
+      }
+    }
+    // Poveži s številkami krogov, sortiraj naraščajoče po number.
+    return [...najPoKrogu.entries()]
+      .map(([roundId, t]) => {
+        const k = vsiKrogiOdigrani.find((x) => x.id === roundId)
+        return k ? { ...t, round_number: k.number, season: k.season } : null
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.round_number - b.round_number)
+  }, [odigraneTocke, vsiKrogiOdigrani])
+
   // Lestvica "od kroga N naprej": sešteje points - penalty za vse kroge
   // te sezone, katerih number >= odKroga, in razvrsti ekipe.
   const lestvicaOd = useMemo(() => {
@@ -154,6 +176,40 @@ export default function Lestvica() {
               ))}
             </ul>
           )}
+        </section>
+      )}
+
+      {/* Zmagovalci vseh odigranih krogov — pregled sezone. */}
+      {zmagovalciKrogov.length > 0 && (
+        <section className="kartica space-y-2 p-3 sm:p-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-lg font-bold">Zmagovalci po krogih</h2>
+            <span className="text-xs text-slate-500">
+              {zmagovalciKrogov.length}{' '}
+              {zmagovalciKrogov.length === 1 ? 'odigran krog' : 'odigranih krogov'}
+            </span>
+          </div>
+          <ul className="space-y-1">
+            {zmagovalciKrogov.map((z) => (
+              <li
+                key={z.round_id}
+                className="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-1.5 text-sm"
+              >
+                <span className="znacka bg-gnl-400/15 text-[10px] text-gnl-200">
+                  {z.round_number}. krog
+                </span>
+                <span className="min-w-0 flex-1 truncate font-semibold">
+                  🏆 {z.team_name}
+                </span>
+                <span className="hidden text-xs text-slate-500 sm:inline">
+                  {z.owner_name}
+                </span>
+                <span className="font-black tabular-nums text-gnl-300">
+                  {formatirajTocke(z.points)}
+                </span>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
 
