@@ -31,6 +31,10 @@ export default function MojaEkipa() {
   const [imeEkipe, setImeEkipe] = useState('')
   const [igralci, setIgralci] = useState([])
   const [izbrani, setIzbrani] = useState([])
+  // Set player_id-jev, ki so bili v DB ob nalaganju. Nujno za izračun
+  // "denar od prodaje" — sprememba glede na ta izhodiščni stanje pove,
+  // koliko denarja se osvobodi (odstranjeni) oz. porabi (dodani).
+  const [zacetniIds, setZacetniIds] = useState(new Set())
   const [krogi, setKrogi] = useState([])
   const [naslednjiKrog, setNaslednjiKrog] = useState(null)
   const [pripomocki, setPripomocki] = useState([])
@@ -80,7 +84,7 @@ export default function MojaEkipa() {
           .maybeSingle(),
         supabase
           .from('fantasy_teams')
-          .select('id, name, budget')
+          .select('id, name, budget, cash')
           .eq('owner_id', session.user.id)
           .maybeSingle(),
         supabase
@@ -125,6 +129,7 @@ export default function MojaEkipa() {
               .order('round_id', { ascending: false }),
           ])
         setIzbrani(nabor ?? [])
+        setZacetniIds(new Set((nabor ?? []).map((s) => s.player_id)))
         setPripomocki(chips ?? [])
         if (zadnjiPosnetek?.length) {
           const zadnjiKrog = zadnjiPosnetek[0].round_id
@@ -155,14 +160,37 @@ export default function MojaEkipa() {
   )
 
   const proracun = ekipa?.budget ?? PRORACUN
-  // Proračun se meri po ceni ob nakupu: če igralec med sezono podraži, to
-  // lastniku ne sme razbiti že sestavljenega kadra.
+  // Cash iz baze je stanje po zadnjem "Shrani". Draft (spremembe od tedaj)
+  // ga premika navidezno: pri odstranitvi igralca dobiš njegovo TRENUTNO
+  // vrednost (dobiček od podražitve se realizira ob prodaji), pri dodajanju
+  // ga plačaš po trenutni ceni.
+  const cashPersistiran =
+    ekipa?.cash != null ? Number(ekipa.cash) : proracun
+  const dodaniIds = izbraniPodrobno
+    .filter((s) => !zacetniIds.has(s.player_id ?? s.id))
+    .map((s) => s.player_id ?? s.id)
+  const odstranjeniIds = [...zacetniIds].filter(
+    (id) => !izbraniPodrobno.some((s) => (s.player_id ?? s.id) === id),
+  )
+  const stroskiNovih = dodaniIds.reduce(
+    (v, id) => v + Number(poId[id]?.value ?? 0),
+    0,
+  )
+  const dobicekOdstranjenih = odstranjeniIds.reduce(
+    (v, id) => v + Number(poId[id]?.value ?? 0),
+    0,
+  )
+  const preostalo = cashPersistiran + dobicekOdstranjenih - stroskiNovih
+  // Porabljeno = kar so plačali za trenutno držane igralce (buy_value).
   const porabljeno = izbraniPodrobno.reduce(
     (v, s) => v + Number(s.buy_value ?? s.value ?? 0),
     0,
   )
-  const preostalo = proracun - porabljeno
-  const napakeEkipe = preveriEkipo(izbraniPodrobno, proracun)
+  // Bogastvo = cash + trenutna vrednost kadra (za info okvirček).
+  const bogastvo =
+    preostalo +
+    izbraniPodrobno.reduce((v, s) => v + Number(s.value ?? 0), 0)
+  const napakeEkipe = preveriEkipo(izbraniPodrobno, cashPersistiran + porabljeno)
   const prvi = izbraniPodrobno.filter((s) => s.is_starter)
   const vKadru = poPozicijah(izbraniPodrobno)
 
@@ -267,7 +295,7 @@ export default function MojaEkipa() {
       const { data, error } = await supabase
         .from('fantasy_teams')
         .insert({ owner_id: session.user.id, name: imeEkipe.trim() })
-        .select('id, name, budget')
+        .select('id, name, budget, cash')
         .single()
       if (error) return setNapaka(error.message)
       ekipaId = data.id
@@ -281,24 +309,49 @@ export default function MojaEkipa() {
       setEkipa({ ...ekipa, name: imeEkipe.trim() })
     }
 
-    await supabase.from('fantasy_roster').delete().eq('fantasy_team_id', ekipaId)
-    if (izbrani.length) {
-      // Vrstni red klopi določa, kdo prvi vskoči ob samodejni menjavi.
-      let naKlopi = 0
-      const { error } = await supabase.from('fantasy_roster').insert(
-        izbrani.map((s) => ({
-          fantasy_team_id: ekipaId,
-          player_id: s.player_id,
-          is_starter: s.is_starter,
-          is_captain: !!s.is_captain,
-          is_vice: !!s.is_vice,
-          bench_order: s.is_starter ? null : ++naKlopi,
-          buy_value: s.buy_value ?? poId[s.player_id]?.value ?? null,
-        })),
-      )
-      if (error) return setNapaka(error.message)
+    // Vrstni red klopi določa, kdo prvi vskoči ob samodejni menjavi.
+    let naKlopi = 0
+    const roster = izbrani.map((s) => ({
+      player_id: s.player_id,
+      is_starter: !!s.is_starter,
+      is_captain: !!s.is_captain,
+      is_vice: !!s.is_vice,
+      bench_order: s.is_starter ? null : ++naKlopi,
+    }))
+
+    // RPC atomarno posodobi roster + cash (dobiček od odstranjenih ostane
+    // v ekipi kot dodaten denar).
+    const { data: rezultat, error } = await supabase.rpc('shrani_ekipo', {
+      p_team_id: ekipaId,
+      p_roster: roster,
+    })
+    if (error) return setNapaka(error.message)
+
+    const novCash =
+      typeof rezultat === 'object' ? Number(rezultat?.cash ?? 0) : null
+    if (novCash != null) {
+      setEkipa((prej) => (prej ? { ...prej, cash: novCash } : prej))
     }
-    setSporocilo('Ekipa je shranjena. 💾')
+
+    // Osveži lokalno stanje: zdaj so vsi izbrani "začetni" (pomeni: ni več
+    // "novih" ali "odstranjenih" v draftu).
+    const { data: svezRoster } = await supabase
+      .from('fantasy_roster')
+      .select('player_id, is_starter, is_captain, is_vice, buy_value')
+      .eq('fantasy_team_id', ekipaId)
+    if (svezRoster) {
+      setIzbrani(svezRoster)
+      setZacetniIds(new Set(svezRoster.map((s) => s.player_id)))
+    }
+
+    const dobicek = Number(rezultat?.dobicek ?? 0)
+    const strosek = Number(rezultat?.strosek ?? 0)
+    const delta = dobicek - strosek
+    if (delta > 0)
+      setSporocilo(`Ekipa shranjena. Prodaja ti je prinesla +${delta.toFixed(1)} M. 💰`)
+    else if (delta < 0)
+      setSporocilo(`Ekipa shranjena. Nakupi so pobrali ${Math.abs(delta).toFixed(1)} M. 💾`)
+    else setSporocilo('Ekipa je shranjena. 💾')
   }
 
   async function vloziPripomocek(chip, krogId) {
@@ -440,10 +493,17 @@ export default function MojaEkipa() {
               {formatirajCeno(preostalo)}
             </div>
             <div className="mt-1 text-xs text-slate-400">
-              od {formatirajCeno(proracun)} · porabljeno{' '}
-              <span className={porabljeno > proracun ? 'text-rose-400' : ''}>
-                {formatirajCeno(porabljeno)}
-              </span>
+              bogastvo <strong className={bogastvo > proracun ? 'text-gnl-300' : bogastvo < proracun ? 'text-rose-300' : 'text-slate-300'}>
+                {formatirajCeno(bogastvo)}
+              </strong>
+              {bogastvo !== proracun && (
+                <span className={bogastvo > proracun ? 'text-gnl-300' : 'text-rose-300'}>
+                  {' '}({bogastvo > proracun ? '+' : ''}{(bogastvo - proracun).toFixed(1)})
+                </span>
+              )}
+              {' · '}kader{' '}
+              <span>{formatirajCeno(porabljeno)} </span>
+              <span className="text-slate-500">plačano</span>
             </div>
           </div>
           <button
