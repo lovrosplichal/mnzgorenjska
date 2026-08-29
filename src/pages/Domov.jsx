@@ -5,6 +5,7 @@ import { PRAVILA_OPIS } from '../lib/tockovanje'
 import { prikazniIme, formatirajTocke, formatirajCeno } from '../lib/pomozno'
 import Grb from '../components/Grb'
 import Klepet from '../components/Klepet'
+import Odstevanje from '../components/Odstevanje'
 
 export default function Domov() {
   const [stat, setStat] = useState(null)
@@ -12,6 +13,7 @@ export default function Domov() {
   const [krog, setKrog] = useState(null)
   const [krogNajboljsi, setKrogNajboljsi] = useState([])
   const [naslednjeTekme, setNaslednjeTekme] = useState([])
+  const [naslednjiKrog, setNaslednjiKrog] = useState(null)
 
   useEffect(() => {
     async function nalozi() {
@@ -54,6 +56,13 @@ export default function Domov() {
         ),
       })
       setZvezde(top.data ?? [])
+
+      // Naslednji krog — za odštevalnik do zaklepanja postave.
+      const { data: nextRound } = await supabase
+        .from('naslednji_krog')
+        .select('id, number, season, played_on, deadline_at')
+        .maybeSingle()
+      setNaslednjiKrog(nextRound ?? null)
 
       // Naslednje tekme — vse še neuvožene (imported_at NULL), do 30 tekem.
       // Igralcem pove, katera tekma prihaja in katera dva kluba igrata.
@@ -172,6 +181,31 @@ export default function Domov() {
               </p>
             </div>
             <span className="gumb-glavni shrink-0">Glasuj zdaj →</span>
+          </div>
+        </Link>
+      )}
+
+      {/* odštevalnik do zaklepanja postave naslednjega kroga */}
+      {naslednjiKrog?.deadline_at && (
+        <Link
+          to="/moja-ekipa"
+          className="block overflow-hidden rounded-3xl bg-gradient-to-r from-gnl-500/15 to-gnl-800/10 p-4 ring-1 ring-gnl-400/30 transition hover:ring-gnl-300/60 sm:p-5"
+        >
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-3xl">⏱️</span>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-baseline gap-2 text-sm">
+                <span className="font-bold text-gnl-200">
+                  {naslednjiKrog.number}. krog se zakleni
+                </span>
+                <Odstevanje do={naslednjiKrog.deadline_at} />
+              </div>
+              <p className="mt-1 text-xs text-slate-400">
+                Zadnji trenutek za spremembo ekipe, kapetana in namestnika.
+                {' '}
+                <span className="underline">Uredi ekipo →</span>
+              </p>
+            </div>
           </div>
         </Link>
       )}

@@ -23,6 +23,7 @@ import {
 } from '../lib/pomozno'
 import Igrisce from '../components/Igrisce'
 import Grb from '../components/Grb'
+import Odstevanje from '../components/Odstevanje'
 
 export default function MojaEkipa() {
   const { session, loading } = useAuth()
@@ -937,28 +938,31 @@ function Rok({ krog }) {
   const rok = krog.deadline_at ? new Date(krog.deadline_at) : null
   const zapadel = rok ? rok.getTime() <= Date.now() : false
   return (
-    <div className="kartica flex flex-wrap items-center gap-x-2 gap-y-1 p-3 text-sm">
+    <div className="kartica flex flex-wrap items-center gap-x-3 gap-y-1 p-3 text-sm">
       <span className="znacka bg-gnl-400/20 text-gnl-200">{krog.number}. krog</span>
       {rok ? (
-        <span className={zapadel ? 'text-amber-300' : 'text-slate-300'}>
-          {zapadel ? 'Rok je potekel — ' : 'Rok za spremembe: '}
-          <strong className="font-semibold">
-            {rok.toLocaleString('sl-SI', {
-              weekday: 'short',
-              day: 'numeric',
-              month: 'numeric',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </strong>
-          {zapadel ? ' spremembe veljajo za naslednji krog.' : ''}
-        </span>
+        <>
+          <span className="text-slate-300">
+            {zapadel ? 'Rok je potekel — ' : 'Rok: '}
+            <strong className="font-semibold">
+              {rok.toLocaleString('sl-SI', {
+                weekday: 'short',
+                day: 'numeric',
+                month: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </strong>
+          </span>
+          <Odstevanje do={krog.deadline_at} ozadje />
+        </>
       ) : (
         <span className="text-slate-400">Rok še ni določen.</span>
       )}
       <span className="w-full text-xs text-slate-500">
-        Ob roku se postava posname; poznejše spremembe na že odigrane kroge ne
-        vplivajo.
+        {zapadel
+          ? 'Spremembe zdaj veljajo za naslednji krog.'
+          : 'Ob roku se postava posname — dokler ni potekel, prosto spreminjaj.'}
       </span>
     </div>
   )

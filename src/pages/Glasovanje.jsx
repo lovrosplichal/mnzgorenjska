@@ -22,24 +22,24 @@ export default function Glasovanje() {
 
   // Vse odigrane tekme naenkrat — iz njih sestavimo kroge, da izbira teče po
   // korakih (krog → tekma) in ne po enem dolgem spustnem seznamu.
+  // Vidne so LE tekme trenutne (tekoče) sezone — arhivske asistence nas na
+  // točkovanju ne zanimajo in bi le nagajale v opozorilih.
   useEffect(() => {
     async function nalozi() {
-      const { data, error } = await supabase
-        .from('match_assist_status')
-        .select('*')
-        .order('played_on', { ascending: false })
+      const [{ data, error }, { data: sez }] = await Promise.all([
+        supabase
+          .from('match_assist_status')
+          .select('*')
+          .order('played_on', { ascending: false }),
+        supabase.from('sezone').select('season, tekoca'),
+      ])
       if (error) setNapaka(error.message)
-      setTekme(data ?? [])
-
-      // Privzeto tekoča sezona: glasovanje o lanskih asistencah nima vpliva na
-      // igro, zato naj bo v ospredju sezona, ki se igra. Lanska ostane
-      // dosegljiva prek preklopa.
-      const sezone = [...new Set((data ?? []).map((t) => t.season))].sort().reverse()
-      const tekoca = sezone[0] ?? null
-      setSezona(tekoca)
-      const vSezoni = (data ?? []).filter((t) => t.season === tekoca)
-      const cakajoc = vSezoni.find((t) => t.brez_asistence > 0)
-      setKrogId(cakajoc?.round_id ?? vSezoni[0]?.round_id ?? null)
+      const tekocaSez = (sez ?? []).find((s) => s.tekoca)?.season ?? null
+      const samoTekoca = (data ?? []).filter((t) => t.season === tekocaSez)
+      setTekme(samoTekoca)
+      setSezona(tekocaSez)
+      const cakajoc = samoTekoca.find((t) => t.brez_asistence > 0)
+      setKrogId(cakajoc?.round_id ?? samoTekoca[0]?.round_id ?? null)
       setNalaganje(false)
     }
     nalozi()
@@ -203,6 +203,18 @@ export default function Glasovanje() {
           asistenca prizna in prinese <strong className="text-gnl-300">+3 točke</strong>.
         </p>
       </header>
+
+      {tekme.length === 0 && (
+        <div className="kartica p-6 text-center text-sm text-slate-300">
+          <p className="mb-2 text-lg font-semibold">
+            V trenutni sezoni še ni odigranih tekem 🎯
+          </p>
+          <p className="text-slate-400">
+            Glasovanje o asistencah se odpre takoj, ko bo prvi krog
+            odigran. Vrni se, ko bodo zapisniki prispeli.
+          </p>
+        </div>
+      )}
 
       {sezone.length > 1 && (
         <div className="flex flex-wrap items-center gap-2">
