@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
-import { prikazniIme, IME_POZICIJE, formatirajTocke } from '../lib/pomozno'
+import { prikazniIme, IME_POZICIJE, formatirajTocke, formatirajCeno } from '../lib/pomozno'
+import { POZICIJE, VELIKOST_EKIPE, STEVILO_PRVIH, MAX_IZ_KLUBA, VRSTNI_RED, poPozicijah } from '../lib/pravila'
 
 export default function Administracija() {
   const { session, loading } = useAuth()
@@ -16,6 +17,7 @@ export default function Administracija() {
   const [iskanje, setIskanje] = useState('')
   const [zadetki, setZadetki] = useState([])
   const [klubi, setKlubi] = useState([])
+  const [ekipe, setEkipe] = useState([])
 
   useEffect(() => {
     if (loading) return
@@ -60,11 +62,89 @@ export default function Administracija() {
         setBrezAsistence(ba.count ?? 0)
         setKrogi(kr.data ?? [])
         setKlubi(kl.data ?? [])
+
+        // Vse fantasy ekipe s celo rostersko sliko za sanity-check.
+        await naloziEkipe()
       }
       setNalaganje(false)
     }
     init()
   }, [session, loading])
+
+  async function naloziEkipe() {
+    // wealth + owners + rosters + player positions/teams — dovolj za validacijo
+    const [{ data: wealth }, { data: teamsBase }, { data: rosters }] =
+      await Promise.all([
+        supabase
+          .from('fantasy_team_wealth')
+          .select('fantasy_team_id, name, starting_budget, cash, roster_value, total_wealth')
+          .order('total_wealth', { ascending: false }),
+        supabase
+          .from('fantasy_teams')
+          .select('id, owner_id, profiles(display_name)'),
+        supabase
+          .from('fantasy_roster')
+          .select(
+            'fantasy_team_id, player_id, is_starter, is_captain, is_vice, buy_value, players(id, full_name, position, team_id, value, active)',
+          ),
+      ])
+    const podrostri = new Map()
+    for (const r of rosters ?? []) {
+      const arr = podrostri.get(r.fantasy_team_id) ?? []
+      arr.push(r)
+      podrostri.set(r.fantasy_team_id, arr)
+    }
+    const lastniki = Object.fromEntries(
+      (teamsBase ?? []).map((t) => [
+        t.id,
+        t.profiles?.display_name ?? t.owner_id?.slice(0, 8) ?? '?',
+      ]),
+    )
+    const napolnjene = (wealth ?? []).map((w) => {
+      const roster = podrostri.get(w.fantasy_team_id) ?? []
+      const kader = roster.map((r) => r.players).filter(Boolean)
+      const napake = validacijaRosterja(roster, kader)
+      return {
+        ...w,
+        owner: lastniki[w.fantasy_team_id] ?? '?',
+        stIgralcev: roster.length,
+        stStarterjev: roster.filter((r) => r.is_starter).length,
+        stKapetanov: roster.filter((r) => r.is_captain).length,
+        stNamestnikov: roster.filter((r) => r.is_vice).length,
+        stNeaktivnih: kader.filter((p) => !p.active).length,
+        kaderPoPoz: poPozicijah(kader),
+        roster,
+        napake,
+      }
+    })
+    setEkipe(napolnjene)
+  }
+
+  function validacijaRosterja(roster, kader) {
+    const napake = []
+    if (roster.length !== VELIKOST_EKIPE)
+      napake.push(`kader ${roster.length}/${VELIKOST_EKIPE}`)
+    const starter = roster.filter((r) => r.is_starter).length
+    if (starter !== STEVILO_PRVIH)
+      napake.push(`postava ${starter}/${STEVILO_PRVIH}`)
+    if (roster.filter((r) => r.is_captain).length !== 1)
+      napake.push('kapetan ni določen ali jih je več')
+    if (roster.filter((r) => r.is_vice).length !== 1)
+      napake.push('namestnik ni določen ali jih je več')
+    const kaderPo = poPozicijah(kader)
+    for (const koda of VRSTNI_RED) {
+      const p = POZICIJE[koda]
+      if (kaderPo[koda] !== p.kader)
+        napake.push(`${p.naslov} ${kaderPo[koda]}/${p.kader}`)
+    }
+    const poKlubu = {}
+    for (const p of kader) poKlubu[p.team_id] = (poKlubu[p.team_id] ?? 0) + 1
+    if (Object.values(poKlubu).some((n) => n > MAX_IZ_KLUBA))
+      napake.push(`>${MAX_IZ_KLUBA} iz istega kluba`)
+    if (kader.filter((p) => !p.active).length > 0)
+      napake.push(`ima ${kader.filter((p) => !p.active).length} neaktivnih igralcev`)
+    return napake
+  }
 
   async function preracunajVse() {
     setNapaka(null)
@@ -147,9 +227,116 @@ export default function Administracija() {
       {/* pregled */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Kazalnik oznaka="Krogov" vrednost={krogi.length} />
-        <Kazalnik oznaka="Brez pozicije" vrednost={brezPozicije} opozori />
-        <Kazalnik oznaka="Brez asistence" vrednost={brezAsistence} opozori />
-        <Kazalnik oznaka="Opozoril" vrednost={opozorila.length} opozori />
+        <Kazalnik oznaka="Fantasy ekip" vrednost={ekipe.length} />
+        <Kazalnik
+          oznaka="Neveljavnih rosterjev"
+          vrednost={ekipe.filter((e) => e.napake.length > 0).length}
+          opozori
+        />
+        <Kazalnik oznaka="Opozoril iz uvoza" vrednost={opozorila.length} opozori />
+      </section>
+
+      {/* Fantasy ekipe — vrednost, cash, veljavnost rosterja */}
+      <section className="kartica space-y-3 p-3 sm:p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-bold">Fantasy ekipe ({ekipe.length})</h2>
+          <button
+            onClick={naloziEkipe}
+            className="text-xs text-slate-400 underline hover:text-gnl-300"
+          >
+            osveži
+          </button>
+        </div>
+        {ekipe.length === 0 ? (
+          <p className="text-sm text-slate-500">Ni ekip.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs sm:text-sm">
+              <thead>
+                <tr className="text-left text-slate-500">
+                  <th className="pb-2 pr-2">Ekipa</th>
+                  <th className="pb-2 pr-2">Lastnik</th>
+                  <th className="pb-2 pr-2 text-right">Cash</th>
+                  <th className="pb-2 pr-2 text-right">Kader</th>
+                  <th className="pb-2 pr-2 text-right">Bogastvo</th>
+                  <th className="pb-2 pr-2">Postava</th>
+                  <th className="pb-2 pr-2">GK/DEF/MID/FWD</th>
+                  <th className="pb-2 pr-2">Kap/Nam</th>
+                  <th className="pb-2 pr-2">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ekipe.map((e) => (
+                  <tr
+                    key={e.fantasy_team_id}
+                    className={`border-t border-white/5 ${
+                      e.napake.length > 0 ? 'bg-rose-500/5' : ''
+                    }`}
+                  >
+                    <td className="py-1.5 pr-2 font-semibold">{e.name}</td>
+                    <td className="py-1.5 pr-2 text-slate-400">{e.owner}</td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">
+                      {formatirajCeno(e.cash)}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right tabular-nums">
+                      {formatirajCeno(e.roster_value)}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right font-bold tabular-nums">
+                      <span
+                        className={
+                          Number(e.total_wealth) > Number(e.starting_budget)
+                            ? 'text-gnl-300'
+                            : Number(e.total_wealth) < Number(e.starting_budget)
+                              ? 'text-rose-300'
+                              : ''
+                        }
+                      >
+                        {formatirajCeno(e.total_wealth)}
+                      </span>
+                    </td>
+                    <td className="py-1.5 pr-2 tabular-nums">
+                      {e.stStarterjev}/{STEVILO_PRVIH}
+                    </td>
+                    <td className="py-1.5 pr-2 tabular-nums">
+                      {VRSTNI_RED.map((k) => e.kaderPoPoz[k]).join('/')}
+                    </td>
+                    <td className="py-1.5 pr-2 tabular-nums text-slate-400">
+                      {e.stKapetanov}/{e.stNamestnikov}
+                    </td>
+                    <td className="py-1.5 pr-2">
+                      {e.napake.length === 0 ? (
+                        <span className="znacka bg-gnl-400/20 text-gnl-200">
+                          ✓ ok
+                        </span>
+                      ) : (
+                        <span
+                          title={e.napake.join('\n')}
+                          className="znacka bg-rose-400/20 text-rose-200"
+                        >
+                          ⚠ {e.napake.length}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {ekipe.some((e) => e.napake.length > 0) && (
+          <div className="rounded-xl border border-rose-400/30 bg-rose-500/5 p-3 text-xs text-rose-100">
+            <strong>Neveljavni rosterji</strong> po glasovanju pozicij:
+            <ul className="mt-1 space-y-1">
+              {ekipe
+                .filter((e) => e.napake.length > 0)
+                .map((e) => (
+                  <li key={e.fantasy_team_id}>
+                    <strong>{e.name}</strong> ({e.owner}) — {e.napake.join(' · ')}
+                  </li>
+                ))}
+            </ul>
+          </div>
+        )}
       </section>
 
       <section className="kartica space-y-3 p-4">
