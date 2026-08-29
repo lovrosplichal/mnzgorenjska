@@ -180,15 +180,22 @@ export default function Lestvica() {
       )}
 
       {/* Zmagovalci vseh odigranih krogov — pregled sezone. */}
-      {zmagovalciKrogov.length > 0 && (
-        <section className="kartica space-y-2 p-3 sm:p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-lg font-bold">Zmagovalci po krogih</h2>
-            <span className="text-xs text-slate-500">
-              {zmagovalciKrogov.length}{' '}
-              {zmagovalciKrogov.length === 1 ? 'odigran krog' : 'odigranih krogov'}
-            </span>
-          </div>
+      <section className="kartica space-y-2 p-3 sm:p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-lg font-bold">Zmagovalci po krogih</h2>
+          <span className="text-xs text-slate-500">
+            {zmagovalciKrogov.length}{' '}
+            {zmagovalciKrogov.length === 1
+              ? 'odigran krog'
+              : 'odigranih krogov'}
+          </span>
+        </div>
+        {zmagovalciKrogov.length === 0 ? (
+          <p className="p-4 text-center text-sm text-slate-400">
+            Prvi krog še ni odigran. Ko bo, se tu vsak teden pojavi zmagovalec
+            (npr. "16. krog 🏆 Jenko").
+          </p>
+        ) : (
           <ul className="space-y-1">
             {zmagovalciKrogov.map((z) => (
               <li
@@ -210,23 +217,28 @@ export default function Lestvica() {
               </li>
             ))}
           </ul>
-        </section>
-      )}
+        )}
+      </section>
 
       {/* Selektor "od kroga X naprej" — če se ekipa priključi kasneje, ima
           še zmeraj svojo lestvico. */}
-      {vsiKrogiOdigrani.length > 0 && (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-baseline gap-2">
-            <h2 className="text-lg font-bold">
-              {odKroga === 1
-                ? 'Skupno (celotna sezona)'
-                : `Od ${odKroga}. kroga naprej`}
-            </h2>
-            <span className="text-xs text-slate-500">
-              Priključil si se pozneje? Izberi svoj krog in tekmuj od tam.
-            </span>
-          </div>
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-baseline gap-2">
+          <h2 className="text-lg font-bold">
+            {odKroga === 1
+              ? 'Skupno (celotna sezona)'
+              : `Od ${odKroga}. kroga naprej`}
+          </h2>
+          <span className="text-xs text-slate-500">
+            Priključil si se pozneje? Izberi svoj krog in tekmuj od tam.
+          </span>
+        </div>
+        {vsiKrogiOdigrani.length === 0 ? (
+          <p className="rounded-xl bg-white/5 p-3 text-center text-xs text-slate-400">
+            Ko bodo odigrani krogi, se tu pojavijo gumbi "Od 2. kroga",
+            "Od 3. kroga" itd — pridi kadarkoli in imej svojo lestvico.
+          </p>
+        ) : (
           <div className="flex flex-wrap gap-1.5">
             <button
               onClick={() => setOdKroga(1)}
@@ -254,8 +266,8 @@ export default function Lestvica() {
                 </button>
               ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <ul className="space-y-2">
         {(lestvicaOd ?? ekipe).map((e, i) => {
