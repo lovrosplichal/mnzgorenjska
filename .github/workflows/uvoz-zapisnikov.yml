@@ -48,6 +48,16 @@ jobs:
           LIGA: ${{ github.event.inputs.liga || '1601' }}
         run: node scripts/uvoz-razporeda.mjs --liga "$LIGA" --pisi
 
+      # Delegacija pove tocne ure zacetka tekem — iz njih izracunamo rok kroga
+      # (6 ur pred prvo tekmo). Delegacije za oddaljene kroge se ni, zato
+      # skript samo tiho preskoci in poskusa naslednjic.
+      - name: Delegacije (roki krogov)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          LIGA: ${{ github.event.inputs.liga || '1601' }}
+        run: node scripts/uvoz-delegiranja.mjs --liga "$LIGA" --pisi
+
       - name: Zapisniki in točke
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
