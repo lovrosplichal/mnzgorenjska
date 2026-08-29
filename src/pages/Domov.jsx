@@ -17,17 +17,11 @@ export default function Domov() {
 
   useEffect(() => {
     async function nalozi() {
-      const [tekme, igralci, goli, brezPozicije, brezAsistence, top] =
+      const [tekme, igralci, goli, brezAsistence, top] =
         await Promise.all([
           supabase.from('matches').select('id', { count: 'exact', head: true }),
           supabase.from('players').select('id', { count: 'exact', head: true }),
           supabase.from('goals').select('id', { count: 'exact', head: true }),
-          // Brez pozicije ni več nikogar; skupnost potrjuje tiste, ki jo imajo
-          // le predlagano iz statistike.
-          supabase
-            .from('players')
-            .select('id', { count: 'exact', head: true })
-            .eq('position_source', 'ugibanje'),
           // Samo tekme, ki so bile odigrane v zadnjih 21 dneh — sicer 704
           // nerešenih iz prejšnje sezone večno visijo v obvestilu.
           supabase
@@ -49,7 +43,6 @@ export default function Domov() {
         tekme: tekme.count ?? 0,
         igralci: igralci.count ?? 0,
         goli: goli.count ?? 0,
-        brezPozicije: brezPozicije.count ?? 0,
         brezAsistence: (brezAsistence.data ?? []).reduce(
           (v, x) => v + Number(x.brez_asistence ?? 0),
           0,
@@ -307,7 +300,7 @@ export default function Domov() {
           <Stevilka oznaka="Golov" vrednost={stat.goli} ikona="⚽" />
           <Stevilka
             oznaka="Čaka glasov"
-            vrednost={stat.brezPozicije + stat.brezAsistence}
+            vrednost={stat.brezAsistence}
             ikona="🗳️"
             poudari
           />
@@ -317,43 +310,26 @@ export default function Domov() {
       {/* klepet — anonimni prostor za pogovor */}
       <Klepet />
 
-      {/* naloge za skupnost */}
-      {stat && (stat.brezPozicije > 0 || stat.brezAsistence > 0) && (
+      {/* naloge za skupnost — samo asistence, pozicij ne izpostavljamo, ker
+          so postavljene iz statistike in jih glasovanje po potrebi popravi. */}
+      {stat && stat.brezAsistence > 0 && (
         <section className="space-y-3">
           <h2 className="text-xl font-bold">Pomagaj skupnosti</h2>
           <div className="grid gap-3 sm:grid-cols-2">
-            {stat.brezAsistence > 0 && (
-              <Link
-                to="/glasovanje"
-                className="kartica kartica-hover flex items-center gap-4 p-4"
-              >
-                <span className="text-3xl">🅰️</span>
-                <div className="min-w-0">
-                  <div className="font-bold">
-                    {stat.brezAsistence} golov brez asistence
-                  </div>
-                  <div className="text-sm text-slate-400">
-                    Povej, kdo je podal — 3 glasovi potrdijo
-                  </div>
+            <Link
+              to="/glasovanje"
+              className="kartica kartica-hover flex items-center gap-4 p-4"
+            >
+              <span className="text-3xl">🅰️</span>
+              <div className="min-w-0">
+                <div className="font-bold">
+                  {stat.brezAsistence} golov brez asistence
                 </div>
-              </Link>
-            )}
-            {stat.brezPozicije > 0 && (
-              <Link
-                to="/pozicije"
-                className="kartica kartica-hover flex items-center gap-4 p-4"
-              >
-                <span className="text-3xl">📍</span>
-                <div className="min-w-0">
-                  <div className="font-bold">
-                    {stat.brezPozicije} igralcev čaka potrditev pozicije
-                  </div>
-                  <div className="text-sm text-slate-400">
-                    Zapisnik označi le vratarja — ostalo potrdi skupnost
-                  </div>
+                <div className="text-sm text-slate-400">
+                  Povej, kdo je podal — 3 glasovi potrdijo
                 </div>
-              </Link>
-            )}
+              </div>
+            </Link>
           </div>
         </section>
       )}
