@@ -12,7 +12,9 @@ export default function Domov() {
   const [zvezde, setZvezde] = useState([])
   const [krog, setKrog] = useState(null)
   const [krogNajboljsi, setKrogNajboljsi] = useState([])
+  const [idealnaPostava, setIdealnaPostava] = useState([])
   const [naslednjeTekme, setNaslednjeTekme] = useState([])
+  const [zadnjiRezultati, setZadnjiRezultati] = useState([])
   const [naslednjiKrog, setNaslednjiKrog] = useState(null)
 
   useEffect(() => {
@@ -57,31 +59,61 @@ export default function Domov() {
         .maybeSingle()
       setNaslednjiKrog(nextRound ?? null)
 
-      // Naslednje tekme — vse še neuvožene (imported_at NULL), do 30 tekem.
-      // Igralcem pove, katera tekma prihaja in katera dva kluba igrata.
-      const [{ data: prihajajoce }, { data: vsiKlubi }, { data: vsiKrogi }] =
-        await Promise.all([
-          supabase
-            .from('matches')
-            .select(
-              'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals',
-            )
-            .is('imported_at', null)
-            .order('played_on', { ascending: true, nullsFirst: false })
-            .limit(30),
-          supabase.from('teams').select('id, name, short_name, logo_url'),
-          supabase.from('rounds').select('id, season, number, played_on'),
-        ])
+      // Naslednje tekme (neuvožene) + zadnji rezultati (uvožene v zadnjih 14 dneh).
+      const enkratDavno = new Date(Date.now() - 14 * 86400000)
+        .toISOString()
+        .slice(0, 10)
+      const [
+        { data: prihajajoce },
+        { data: nedavno },
+        { data: vsiKlubi },
+        { data: vsiKrogi },
+      ] = await Promise.all([
+        supabase
+          .from('matches')
+          .select(
+            'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals',
+          )
+          .is('imported_at', null)
+          .order('played_on', { ascending: true, nullsFirst: false })
+          .limit(30),
+        supabase
+          .from('matches')
+          .select(
+            'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals',
+          )
+          .not('imported_at', 'is', null)
+          .gte('played_on', enkratDavno)
+          .order('played_on', { ascending: false })
+          .limit(30),
+        supabase.from('teams').select('id, name, short_name, logo_url'),
+        supabase.from('rounds').select('id, season, number, played_on'),
+      ])
       const klubPo = Object.fromEntries((vsiKlubi ?? []).map((t) => [t.id, t]))
       const krogPo = Object.fromEntries((vsiKrogi ?? []).map((k) => [k.id, k]))
-      setNaslednjeTekme(
-        (prihajajoce ?? []).map((m) => ({
-          ...m,
-          home: klubPo[m.home_team_id],
-          away: klubPo[m.away_team_id],
-          krog: krogPo[m.round_id],
-        })),
+      const obogati = (m) => ({
+        ...m,
+        home: klubPo[m.home_team_id],
+        away: klubPo[m.away_team_id],
+        krog: krogPo[m.round_id],
+      })
+      // Placeholderji iz uvoz-razporeda (imported_at IS NULL) so pogosto
+      // dvojnik uvoženih tekem. Iztlačimo tiste, za katere OBSTAJA uvožena
+      // tekma z istimi ekipami na isti dan.
+      const uvozeniKljuc = new Set(
+        (nedavno ?? []).map(
+          (m) =>
+            `${m.home_team_id}-${m.away_team_id}-${m.played_on ?? ''}`,
+        ),
       )
+      const cistoNove = (prihajajoce ?? []).filter(
+        (m) =>
+          !uvozeniKljuc.has(
+            `${m.home_team_id}-${m.away_team_id}-${m.played_on ?? ''}`,
+          ),
+      )
+      setNaslednjeTekme(cistoNove.map(obogati))
+      setZadnjiRezultati((nedavno ?? []).map(obogati))
 
       // Kdo je bil najboljši v zadnjem odigranem krogu.
       const { data: zadnji } = await supabase
@@ -97,8 +129,30 @@ export default function Domov() {
           )
           .eq('round_id', zadnji.id)
           .order('points', { ascending: false })
-          .limit(5)
-        setKrogNajboljsi(najboljsi ?? [])
+          .limit(50)
+        setKrogNajboljsi((najboljsi ?? []).slice(0, 5))
+
+        // Idealna enajsterica: 1 GK + top 4 DEF + top 4 MID + top 2 FWD
+        // po točkah v zadnjem odigranem krogu. Če je pozicij premalo,
+        // dopolni z ostalimi najboljšimi. Pokaže, kaj se sistem šteje
+        // za "the team of the week".
+        const poPozicijah = { GK: [], DEF: [], MID: [], FWD: [] }
+        for (const p of najboljsi ?? []) {
+          if (poPozicijah[p.position]) poPozicijah[p.position].push(p)
+        }
+        const izbrani = [
+          ...poPozicijah.GK.slice(0, 1),
+          ...poPozicijah.DEF.slice(0, 4),
+          ...poPozicijah.MID.slice(0, 4),
+          ...poPozicijah.FWD.slice(0, 2),
+        ]
+        // Če je premalo (redke pozicije brez podatkov), dopolni s top preostalimi.
+        const uporabljeni = new Set(izbrani.map((p) => p.player_id))
+        for (const p of najboljsi ?? []) {
+          if (izbrani.length >= 11) break
+          if (!uporabljeni.has(p.player_id)) izbrani.push(p)
+        }
+        setIdealnaPostava(izbrani)
       }
     }
     nalozi()
@@ -201,6 +255,138 @@ export default function Domov() {
             </div>
           </div>
         </Link>
+      )}
+
+      {/* zadnji rezultati — odigrane tekme zadnjih 14 dni */}
+      {zadnjiRezultati.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-bold">Zadnji rezultati</h2>
+            <span className="text-xs text-slate-500">
+              {zadnjiRezultati.length} tekem
+            </span>
+          </div>
+          <div className="space-y-4">
+            {(() => {
+              const poKrogu = new Map()
+              for (const t of zadnjiRezultati) {
+                const key = t.krog?.id ?? 0
+                if (!poKrogu.has(key))
+                  poKrogu.set(key, { krog: t.krog, tekme: [] })
+                poKrogu.get(key).tekme.push(t)
+              }
+              return [...poKrogu.values()]
+                .sort((a, b) => (b.krog?.number ?? 0) - (a.krog?.number ?? 0))
+                .slice(0, 2)
+                .map(({ krog, tekme }) => (
+                  <div key={krog?.id ?? 'brez'} className="kartica p-3 sm:p-4">
+                    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                      <span className="text-sm font-bold text-gnl-300">
+                        {krog ? `${krog.number}. krog` : 'Brez kroga'}
+                        {krog?.season && (
+                          <span className="ml-2 font-normal text-slate-500">
+                            {krog.season}
+                          </span>
+                        )}
+                      </span>
+                      {krog?.played_on && (
+                        <span className="text-xs text-slate-500">
+                          {new Date(krog.played_on).toLocaleDateString('sl-SI', {
+                            weekday: 'short',
+                            day: 'numeric',
+                            month: 'numeric',
+                          })}
+                        </span>
+                      )}
+                    </div>
+                    <ul className="space-y-1.5">
+                      {tekme.map((t) => (
+                        <li
+                          key={t.id}
+                          className="flex items-center gap-2 rounded-lg bg-white/5 p-2 text-sm"
+                        >
+                          <div className="flex flex-1 items-center justify-end gap-2 truncate">
+                            <span className="truncate font-semibold">
+                              {t.home?.name ?? '?'}
+                            </span>
+                            <Grb
+                              ime={t.home?.name}
+                              kratko={t.home?.short_name}
+                              logo={t.home?.logo_url}
+                              velikost={22}
+                            />
+                          </div>
+                          <span className="shrink-0 rounded-lg bg-slate-950/60 px-2 py-0.5 text-sm font-black tabular-nums">
+                            {t.home_goals}:{t.away_goals}
+                          </span>
+                          <div className="flex flex-1 items-center gap-2 truncate">
+                            <Grb
+                              ime={t.away?.name}
+                              kratko={t.away?.short_name}
+                              logo={t.away?.logo_url}
+                              velikost={22}
+                            />
+                            <span className="truncate font-semibold">
+                              {t.away?.name ?? '?'}
+                            </span>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))
+            })()}
+          </div>
+        </section>
+      )}
+
+      {/* idealna enajsterica zadnjega kroga */}
+      {idealnaPostava.length > 0 && (
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-bold">Idealna enajsterica</h2>
+            <span className="text-xs text-slate-500">
+              {krog?.number}. krog · sezona {krog?.season}
+            </span>
+          </div>
+          <p className="text-xs text-slate-500">
+            Najboljših 11 igralcev zadnjega odigranega kroga po naši statistiki
+            (1 GK, 4 BR, 4 VE, 2 NA). Pokazatelj, da se točke pravilno štejejo.
+          </p>
+          <ul className="grid gap-1.5 sm:grid-cols-2">
+            {idealnaPostava.map((p, i) => (
+              <li
+                key={p.player_id}
+                className="kartica flex items-center gap-2 p-2 text-sm"
+              >
+                <span className="w-5 text-center text-xs font-black text-slate-600">
+                  {i + 1}
+                </span>
+                <span
+                  className={`znacka poz-${p.position} text-[10px]`}
+                  title={p.position}
+                >
+                  {p.position}
+                </span>
+                <Grb
+                  ime={p.team_name}
+                  kratko={p.team_short}
+                  logo={p.team_logo}
+                  velikost={20}
+                />
+                <Link
+                  to={`/igralec/${p.player_id}`}
+                  className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
+                >
+                  {prikazniIme(p.full_name)}
+                </Link>
+                <span className="font-black tabular-nums text-gnl-300">
+                  {formatirajTocke(p.points)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {/* naslednje tekme — razpored, da uporabniki vedo kaj prihaja */}

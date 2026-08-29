@@ -480,23 +480,52 @@ export default function MojaEkipa() {
         </div>
       )}
 
-      {/* Rdeč opozorilni pas, ko je roster tehnično neveljaven — jasno pove,
-          da v tem stanju NE bo dobil točk (velja od 2. kroga naprej). */}
+      {/* Rdeč opozorilni pas s KONKRETNIMI napakami + katerim krogom velja. */}
       {izbrani.length > 0 && napakeEkipe.length > 0 && (
         <div className="kartica animiraj-utrip border-2 border-rose-400/60 bg-rose-500/10 p-3 sm:p-4">
           <div className="flex items-start gap-3">
             <span className="text-2xl">🚨</span>
-            <div className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1 space-y-2">
               <div className="text-sm font-black text-rose-100 sm:text-base">
                 Tvoja ekipa NE ustreza pravilom
               </div>
-              <div className="mt-1 text-xs text-rose-100/90">
-                V tem stanju za krog <strong>ne boš dobil točk</strong>. Verjetno
-                se je poziciji kakšnega igralca po glasovanju premaknila
-                (npr. iz napadalca v vezista) in ti je porušila kader.
-                Popravi ekipo — dokler ni {POZICIJE.GK.kader} GK, {POZICIJE.DEF.kader} BR,{' '}
-                {POZICIJE.MID.kader} VE, {POZICIJE.FWD.kader} NA in 11 v postavi.
+              {naslednjiKrog && (
+                <div className="text-xs text-rose-100/90">
+                  <strong>Za {naslednjiKrog.number}. krog</strong>
+                  {naslednjiKrog.deadline_at && (
+                    <>
+                      {' '}(rok:{' '}
+                      {new Date(naslednjiKrog.deadline_at).toLocaleString(
+                        'sl-SI',
+                        {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        },
+                      )}
+                      )
+                    </>
+                  )}{' '}
+                  v tem stanju <strong>NE boš dobil točk</strong>.
+                </div>
+              )}
+              <div className="text-xs text-rose-100/90">
+                Konkretne napake:
+                <ul className="mt-1 space-y-0.5 pl-4">
+                  {napakeEkipe.map((n) => (
+                    <li key={n} className="list-disc">
+                      {n}
+                    </li>
+                  ))}
+                </ul>
               </div>
+              <p className="text-[11px] text-rose-100/70">
+                Pogosto se to zgodi, ker glasovanje o poziciji premakne igralca
+                (npr. iz napadalca v vezista) in ti poruši kader. Popravi zdaj,
+                dokler rok ni potekel.
+              </p>
             </div>
           </div>
         </div>
@@ -827,6 +856,40 @@ export default function MojaEkipa() {
                         Ime ekipe je obvezno — klik te vrne na polje zgoraj.
                       </span>
                     )}
+                  </div>
+
+                  {/* Kaj se pravzaprav zgodi ob shranjevanju — jasno pojasnilo. */}
+                  <div className="rounded-xl bg-slate-950/40 p-3 text-[11px] leading-snug text-slate-400">
+                    <strong className="text-slate-300">
+                      Kaj pomeni "Shrani"?
+                    </strong>{' '}
+                    Tvoje spremembe (kader, postava, kapetan) se zapišejo v bazo.
+                    Za trenutni krog velja stanje ob roku
+                    {naslednjiKrog?.deadline_at && (
+                      <>
+                        {' '}
+                        (
+                        <strong className="text-slate-300">
+                          {naslednjiKrog.number}. krog —{' '}
+                          {new Date(naslednjiKrog.deadline_at).toLocaleString(
+                            'sl-SI',
+                            {
+                              weekday: 'short',
+                              day: 'numeric',
+                              month: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            },
+                          )}
+                        </strong>
+                        )
+                      </>
+                    )}
+                    . Do roka lahko poljubno spreminjaš in ponovno pritiskaš
+                    Shrani — velja zadnja verzija.{' '}
+                    <strong className="text-slate-300">"Shrani osnutek"</strong>{' '}
+                    pomeni isto, samo z opombo, da ekipa še ne izpolnjuje vseh
+                    pravil (za točke rabiš popravke — glej seznam zgoraj).
                   </div>
 
                   {sporocilo && (
