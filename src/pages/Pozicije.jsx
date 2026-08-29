@@ -274,7 +274,7 @@ export default function Pozicije() {
             onChange={(e) => setSamoNepotrjene(e.target.checked)}
             className="h-4 w-4 rounded accent-gnl-400"
           />
-          Samo nepotrjene ({stNepotrjenih})
+          Samo iz statistike ({stNepotrjenih})
         </label>
       </div>
 
@@ -419,13 +419,12 @@ function IgralecKartica({
               izZapisnika
                 ? 'Iz zapisnika — vratar je označen z (V)'
                 : ugibano
-                  ? 'Pozicija še ni potrjena — glasovanje jo popravi'
+                  ? 'Iz statistike (št. dresa, goli, kartoni) — glasovi jo lahko popravijo'
                   : 'Potrdila skupnost'
             }
           >
             {IKONA[igralec.position]} {IME_POZICIJE[igralec.position]}
             {izZapisnika && ' · zapisnik'}
-            {ugibano && ' · ni potrjeno'}
           </span>
         )}
       </div>
@@ -444,7 +443,7 @@ function IgralecKartica({
       {!zaklenjeno && potrjeno && !priorVodilna && (
         <p className="mt-2 text-xs text-slate-500">
           {ugibano
-            ? 'Pozicija še ni potrjena — če ni prava, klikni pravo.'
+            ? 'Pozicija je določena iz statistike — če ni prava, klikni pravo.'
             : 'Pozicijo je določila skupnost — z glasovi jo je mogoče popraviti.'}
         </p>
       )}

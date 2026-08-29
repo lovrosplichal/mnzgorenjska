@@ -45,6 +45,14 @@ export default function Igralec() {
       }
       setIgralec(p)
 
+      // Trenutna sezona — potrebujemo, da price_changes filtriramo nanjo.
+      const { data: sez } = await supabase
+        .from('sezone')
+        .select('season')
+        .eq('tekoca', true)
+        .maybeSingle()
+      const tekocaSez = sez?.season ?? ''
+
       const [{ data: k }, { data: c }, { data: g }, { data: t }] = await Promise.all([
         supabase
           .from('player_scores')
@@ -52,10 +60,13 @@ export default function Igralec() {
           .eq('player_id', id)
           .order('round_id', { ascending: false })
           .limit(10),
+        // Samo spremembe cen v TEKOČI sezoni — sicer se pokažejo lanski
+        // krogi brez konteksta in delujejo kot "napovedi" za prihodnost.
         supabase
           .from('price_changes')
-          .select('old_value, new_value, changed_at, rounds(number)')
+          .select('old_value, new_value, changed_at, rounds!inner(number, season)')
           .eq('player_id', id)
+          .eq('rounds.season', tekocaSez)
           .order('changed_at', { ascending: false })
           .limit(5),
         supabase
@@ -182,61 +193,15 @@ export default function Igralec() {
             {IKONA[igralec.position]}{' '}
             {IME_POZICIJE[igralec.position] ?? 'Pozicija ni znana'}
           </span>
-          {!prijava && (
-            <button
-              onClick={() => setPrijava(true)}
-              className="text-sm text-slate-400 underline hover:text-white"
+          {igralec.position_source !== 'zapisnik' && (
+            <Link
+              to="/pozicije"
+              className="text-xs text-slate-400 underline hover:text-gnl-300"
             >
-              Ni prava pozicija? Obvesti nas
-            </button>
+              glasuj o pozicijah →
+            </Link>
           )}
         </div>
-
-        {prijava && (
-          <div className="space-y-2">
-            {igralec.position_source === 'zapisnik' ? (
-              <p className="text-sm text-slate-400">
-                Pozicija tega igralca je iz uradnega zapisnika (vratar je v njem
-                izrecno označen), zato je ni mogoče spreminjati.
-              </p>
-            ) : (
-              <>
-                <p className="text-sm text-slate-300">
-                  Kje po tvoje igra? Ko se zbere dovolj enakih sporočil, se
-                  pozicija popravi.
-                </p>
-                <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {POZICIJE.map((p) => (
-                    <button
-                      key={p}
-                      onClick={() => glasuj(p)}
-                      disabled={!session}
-                      className={`rounded-xl px-3 py-2 text-sm font-semibold transition disabled:opacity-40 ${
-                        mojGlas === p ? 'ring-2 ring-gnl-400' : 'ring-1 ring-white/10'
-                      } ${razredPozicije(p)}`}
-                    >
-                      {IKONA[p]} {KRATKA_POZICIJA[p]}
-                      {glasovi[p] ? (
-                        <span className="ml-1 text-xs opacity-70">
-                          {glasovi[p]}
-                        </span>
-                      ) : null}
-                    </button>
-                  ))}
-                </div>
-                {!session && (
-                  <p className="text-xs text-slate-500">
-                    Za sporočilo se moraš{' '}
-                    <Link to="/prijava" className="underline">
-                      prijaviti
-                    </Link>
-                    .
-                  </p>
-                )}
-              </>
-            )}
-          </div>
-        )}
         {sporocilo && <p className="text-sm text-gnl-300">{sporocilo}</p>}
       </section>
 
