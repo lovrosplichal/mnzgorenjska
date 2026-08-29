@@ -186,22 +186,73 @@ export default function Igralec() {
         <Stevilka oznaka="Minut" vrednost={igralec.minutes} />
       </div>
 
-      {/* pozicija */}
+      {/* pozicija — s hitrim glasovanjem, brez preskoka na /pozicije */}
       <section className="kartica space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <span className={`znacka ${razredPozicije(igralec.position)}`}>
             {IKONA[igralec.position]}{' '}
             {IME_POZICIJE[igralec.position] ?? 'Pozicija ni znana'}
           </span>
-          {igralec.position_source !== 'zapisnik' && (
-            <Link
-              to="/pozicije"
-              className="text-xs text-slate-400 underline hover:text-gnl-300"
-            >
-              glasuj o pozicijah →
-            </Link>
+          {igralec.position_source === 'zapisnik' && (
+            <span className="text-xs text-slate-500">
+              iz zapisnika (vratar je uradno označen)
+            </span>
           )}
         </div>
+
+        {igralec.position_source !== 'zapisnik' && (
+          <>
+            <p className="text-xs text-slate-400">
+              {session
+                ? 'Kje po tvoje igra? Klikni pravo pozicijo. Utežena zbirka glasov skupnosti odloči.'
+                : 'Prijavljeni uporabniki lahko glasujejo o poziciji.'}
+            </p>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {POZICIJE.map((p) => {
+                const izbran = mojGlas === p
+                const glasov = glasovi[p] ?? 0
+                return (
+                  <button
+                    key={p}
+                    onClick={() => glasuj(p)}
+                    disabled={!session}
+                    className={`relative rounded-xl px-3 py-2 text-sm font-semibold transition disabled:opacity-40 ${
+                      izbran
+                        ? 'ring-2 ring-gnl-400'
+                        : 'ring-1 ring-white/10 hover:ring-white/30'
+                    } poz-${p}`}
+                  >
+                    <span className="flex items-center justify-center gap-1">
+                      {IKONA[p]} {KRATKA_POZICIJA[p]}
+                      {glasov > 0 && (
+                        <span className="tabular-nums opacity-70">
+                          {glasov}
+                        </span>
+                      )}
+                      {izbran && <span>✓</span>}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+            {!session && (
+              <p className="text-xs text-slate-500">
+                Za glasovanje se{' '}
+                <Link to="/prijava" className="underline">
+                  prijavi
+                </Link>
+                .
+              </p>
+            )}
+            <p className="text-[11px] text-slate-500">
+              Podroben pregled vseh igralcev in uteži je na strani{' '}
+              <Link to="/pozicije" className="underline hover:text-gnl-300">
+                Pozicije
+              </Link>
+              .
+            </p>
+          </>
+        )}
         {sporocilo && <p className="text-sm text-gnl-300">{sporocilo}</p>}
       </section>
 
