@@ -196,6 +196,16 @@ export default function Domov() {
             ohranjene mreže, kartoni. Vse razen asistenc, ki jih določi
             skupnost.
           </p>
+          {/* Poziv za novince — v hero, da ga vidi vsak prvič obiskovalec. */}
+          <div className="rounded-2xl border border-gnl-400/40 bg-gnl-500/10 p-3 text-sm text-gnl-100 backdrop-blur">
+            🏁 <strong>Zamudil si štart? Nič hudega.</strong> Vsak krog ima
+            svojega zmagovalca. Na{' '}
+            <Link to="/lestvica" className="underline">
+              Lestvici
+            </Link>{' '}
+            izbereš "Od N. kroga naprej" in tekmuješ od trenutka, ko se
+            pridružiš. Nič ni prepozno.
+          </div>
           <div className="flex flex-wrap gap-3 pt-2">
             <Link to="/moja-ekipa" className="gumb-glavni">
               Sestavi ekipo
@@ -341,6 +351,51 @@ export default function Domov() {
         </section>
       )}
 
+      {/* Igralec kroga — najboljši posameznik kroga, velika kartica. */}
+      {krogNajboljsi[0] && (
+        <section className="relative overflow-hidden rounded-3xl border border-amber-300/40 bg-gradient-to-br from-amber-500/20 via-slate-950/60 to-fuchsia-500/10 p-5 shadow-lg shadow-black/40 sm:p-6">
+          <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+            <div className="text-5xl sm:text-6xl">🌟</div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-bold uppercase tracking-wide text-amber-200/80">
+                Igralec {krog?.number}. kroga
+              </div>
+              <Link
+                to={`/igralec/${krogNajboljsi[0].player_id}`}
+                className="mt-1 block truncate text-3xl font-black text-white hover:text-gnl-200 sm:text-4xl"
+              >
+                {prikazniIme(krogNajboljsi[0].full_name)}
+              </Link>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
+                <Grb
+                  ime={krogNajboljsi[0].team_name}
+                  kratko={krogNajboljsi[0].team_short}
+                  logo={krogNajboljsi[0].team_logo}
+                  velikost={20}
+                />
+                <span>{krogNajboljsi[0].team_name}</span>
+                <span
+                  className={`znacka poz-${krogNajboljsi[0].position}`}
+                >
+                  {krogNajboljsi[0].position}
+                </span>
+                <span className="text-slate-500">
+                  · {krogNajboljsi[0].minutes} min
+                </span>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-4xl font-black tabular-nums text-amber-200 sm:text-5xl">
+                {formatirajTocke(krogNajboljsi[0].points)}
+              </div>
+              <div className="text-xs uppercase tracking-wide text-slate-400">
+                točk
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
       {/* idealna enajsterica zadnjega kroga — na igrišču */}
       {idealnaPostava.length > 0 && (
         <section className="space-y-3">
@@ -446,30 +501,6 @@ export default function Domov() {
           </div>
         </section>
       )}
-
-      {/* Priključi se kadarkoli — pomiritev za novince, ki se bojijo, da so
-          prepozno začeli. */}
-      <section className="kartica overflow-hidden bg-gradient-to-r from-gnl-500/10 to-transparent p-4 ring-1 ring-gnl-400/20 sm:p-5">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="text-3xl">🏁</span>
-          <div className="min-w-0 flex-1">
-            <h2 className="text-base font-bold text-gnl-200 sm:text-lg">
-              Zamudil si štart? Nič hudega.
-            </h2>
-            <p className="mt-1 text-sm text-slate-300">
-              Vsak <strong>krog</strong> ima svojega zmagovalca, in na{' '}
-              <Link to="/lestvica" className="text-gnl-300 underline">
-                Lestvici
-              </Link>{' '}
-              lahko izbereš "<strong>Od N. kroga naprej</strong>" — tako lahko
-              zmagaš tudi če se priključiš na sredini sezone.
-            </p>
-          </div>
-          <Link to="/moja-ekipa" className="gumb-glavni shrink-0 text-sm">
-            Ustvari ekipo →
-          </Link>
-        </div>
-      </section>
 
       {/* številke — iz zgodovine (vključno z lansko sezono, ne trenutne) */}
       {stat && (

@@ -87,33 +87,35 @@ function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
         </span>
       )}
 
-      {/* Točke igralca v zadnjem odigranem krogu — modra značka zg. desno.
-          Če je kapetan, se prikaže x3 (uporabnik pa vidi surovo vrednost). */}
+      {/* Točke zadnjega odigranega kroga — zgoraj desno, ista barva (fuchsia)
+          za vse igralce, da je enako berljivo in ne mislimo o gradientu. */}
       {igralec.tocke_krog != null && (
         <span
           title={`Točke v zadnjem krogu: ${igralec.tocke_krog}${
             igralec.is_captain ? ' × 3 (kapetan)' : ''
           }`}
-          className={`absolute -right-1 -bottom-1 flex min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-black
-                      ring-1 ring-white/30 sm:min-w-[1.5rem] sm:text-[11px] ${
-                        igralec.tocke_krog >= 8
-                          ? 'bg-gnl-400 text-slate-950'
-                          : igralec.tocke_krog >= 3
-                            ? 'bg-slate-100 text-slate-900'
-                            : 'bg-slate-700 text-slate-200'
-                      }`}
+          className="absolute -right-1 -top-1 z-10 flex min-w-[1.35rem] items-center
+                     justify-center rounded-full bg-fuchsia-500 px-1 py-0.5 text-[11px]
+                     font-black leading-none text-white ring-1 ring-fuchsia-200/60
+                     shadow-sm shadow-black/40 sm:min-w-[1.6rem] sm:text-xs"
         >
           {igralec.tocke_krog}
         </span>
       )}
 
-      {/* Na dotik ni prehoda z miško, zato je gumb za odstranitev vedno viden. */}
+      {/* Gumb za odstranitev — če ima igralec točke, se zgornji desni kot
+          zasede z barvasto značko; delete gremo v spodnji desni kot, kjer
+          ne moti berljivosti. */}
       <button
         onClick={naOdstrani}
         title="Odstrani iz kadra"
-        className="absolute -right-1 -top-1 flex h-5 w-5 items-center justify-center rounded-full
-                   bg-slate-900 text-[10px] text-slate-300 ring-1 ring-white/20
-                   hover:text-rose-400 lg:hidden lg:group-hover:flex"
+        className={`absolute flex h-5 w-5 items-center justify-center rounded-full
+                    bg-slate-900/90 text-[10px] text-slate-300 ring-1 ring-white/20
+                    hover:text-rose-400 lg:hidden lg:group-hover:flex ${
+                      igralec.tocke_krog != null
+                        ? '-right-1 -bottom-1'
+                        : '-right-1 -top-1'
+                    }`}
       >
         ✕
       </button>
