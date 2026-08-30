@@ -19,13 +19,9 @@ export default function Glasovanje() {
   const [nalaganje, setNalaganje] = useState(true)
   const [napaka, setNapaka] = useState(null)
   const [pravkarOddan, setPravkarOddan] = useState(null)
-  const [vseTekme, setVseTekme] = useState([]) // vse sezone, za archive toggle
-  const [tekocaSezona, setTekocaSezona] = useState(null)
-  const [prikaziArhiv, setPrikaziArhiv] = useState(false)
 
-  // Vse odigrane tekme naenkrat — privzeto samo tekoča sezona, arhiv
-  // dostopen z gumbom (npr. če je nekdo lansko sezono glasoval in bi rad
-  // videl svoj glas / dodal manjkajočega).
+  // Vse odigrane tekme naenkrat — samo TEKOČA sezona. Lanska liga ni bila
+  // fantasy-aktivna, zato bi glasovanje o lanskih asistencah bilo brez smisla.
   useEffect(() => {
     async function nalozi() {
       const [{ data, error }, { data: sez }] = await Promise.all([
@@ -37,8 +33,6 @@ export default function Glasovanje() {
       ])
       if (error) setNapaka(error.message)
       const tekocaSez = (sez ?? []).find((s) => s.tekoca)?.season ?? null
-      setVseTekme(data ?? [])
-      setTekocaSezona(tekocaSez)
       const samoTekoca = (data ?? []).filter((t) => t.season === tekocaSez)
       setTekme(samoTekoca)
       setSezona(tekocaSez)
@@ -48,16 +42,6 @@ export default function Glasovanje() {
     }
     nalozi()
   }, [])
-
-  // Ko uporabnik preklopi archive, preložimo tekme.
-  useEffect(() => {
-    if (!vseTekme.length) return
-    if (prikaziArhiv) {
-      setTekme(vseTekme)
-    } else {
-      setTekme(vseTekme.filter((t) => t.season === tekocaSezona))
-    }
-  }, [prikaziArhiv, vseTekme, tekocaSezona])
 
   // Ob menjavi kroga izberemo prvo tekmo, ki še potrebuje glasove.
   useEffect(() => {
@@ -217,32 +201,6 @@ export default function Glasovanje() {
           asistenca prizna in prinese <strong className="text-gnl-300">+3 točke</strong>.
         </p>
       </header>
-
-      {/* Toggle za prikaz arhiva (lanskih sezon) */}
-      {vseTekme.some((t) => t.season !== tekocaSezona) && (
-        <div className="flex flex-wrap items-center gap-2 text-sm">
-          <button
-            onClick={() => setPrikaziArhiv(false)}
-            className={`znacka transition ${
-              !prikaziArhiv
-                ? 'bg-gnl-500 text-slate-950'
-                : 'bg-white/5 text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            Tekoča sezona ({tekocaSezona})
-          </button>
-          <button
-            onClick={() => setPrikaziArhiv(true)}
-            className={`znacka transition ${
-              prikaziArhiv
-                ? 'bg-gnl-500 text-slate-950'
-                : 'bg-white/5 text-slate-300 hover:bg-white/10'
-            }`}
-          >
-            Vse sezone (arhiv)
-          </button>
-        </div>
-      )}
 
       {tekme.length === 0 && (
         <div className="kartica p-6 text-center text-sm text-slate-300">
