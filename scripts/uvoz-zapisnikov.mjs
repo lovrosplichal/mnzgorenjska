@@ -281,8 +281,21 @@ for (const id of ids) {
       .single()
     if (eTekma) throw new Error(eTekma.message)
 
-    // ob ponovnem uvozu podatke tekme prepišemo
-    await db.from('goals').delete().eq('match_id', tekma.id)
+    // POMEMBNO: goli in nastopi se PREPIŠEJO le, če se je vsebina spremenila.
+    // Ker ima 'goals' ON DELETE CASCADE na assist_votes, vsak delete-then-insert
+    // uniči uporabniške glasove o asistencah — kar je se je zgodilo večkrat v
+    // začetku. Zdaj primerjamo obstoječe s prihajajočimi in če je "isto",
+    // preprosto preskočimo delete/insert.
+    const { data: obstGoli } = await db
+      .from('goals')
+      .select('minute, scorer_id, is_own_goal, is_penalty, score_home, score_away, team_id')
+      .eq('match_id', tekma.id)
+    const kljucGola = (g) =>
+      `${g.minute}|${g.scorer_id}|${g.team_id}|${g.is_own_goal ? 1 : 0}|${g.is_penalty ? 1 : 0}`
+    const obstKljuci = new Set((obstGoli ?? []).map(kljucGola))
+    let hkratenIzbris = false // odloči šele po pripravi novih vrstic spodaj
+
+    // ob ponovnem uvozu nastope vedno prepišemo (nimajo cascade-občutljivih podatkov)
     await db.from('appearances').delete().eq('match_id', tekma.id)
 
     // nastopi
@@ -346,8 +359,20 @@ for (const id of ids) {
       })
     }
     if (goliVrstice.length) {
-      const { error: eGoli } = await db.from('goals').insert(goliVrstice)
-      if (eGoli) throw new Error(eGoli.message)
+      // Preveri, ali se prihajajoči nabor golov razlikuje od obstoječega.
+      // Če je enak, preskočimo delete/insert (asistence in glasovi ostanejo).
+      const noviKljuci = new Set(goliVrstice.map(kljucGola))
+      const enak =
+        obstKljuci.size === noviKljuci.size &&
+        [...obstKljuci].every((k) => noviKljuci.has(k))
+      if (!enak) {
+        // Vsebina se je spremenila (dodan/odstranjen gol, popravek). Le tedaj
+        // izbrišemo in ponovno vstavimo — vsi glasovi za spremenjene gole se
+        // sicer izgubijo, a to je pravilno vedenje ob spremembi zapisnika.
+        await db.from('goals').delete().eq('match_id', tekma.id)
+        const { error: eGoli } = await db.from('goals').insert(goliVrstice)
+        if (eGoli) throw new Error(eGoli.message)
+      }
     }
 
     uvozenih++
