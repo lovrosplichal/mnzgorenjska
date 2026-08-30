@@ -102,19 +102,34 @@ export default function Klepet() {
   }
 
   return (
-    <section className="kartica space-y-3 p-3 sm:p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-xl font-bold">Klepet</h2>
-        <span className="text-xs text-slate-500">
-          {session ? (
-            <>
-              tvoje ime v klepetu:{' '}
-              <strong className="text-slate-300">{mojPsev}</strong>
-            </>
-          ) : (
-            'anonimno · za objavo se prijavi'
-          )}
-        </span>
+    <section className="relative overflow-hidden rounded-3xl border-2 border-fuchsia-400/40 bg-gradient-to-br from-fuchsia-500/15 via-slate-950/70 to-gnl-500/10 p-4 shadow-lg shadow-fuchsia-500/10 sm:p-5">
+      <div className="mb-3 space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-2xl">💬</span>
+          <h2 className="text-xl font-black text-fuchsia-100 sm:text-2xl">
+            Pomagajte nam izboljšati!
+          </h2>
+          <span className="znacka bg-white/10 text-[10px] text-slate-300">
+            anonimno
+          </span>
+        </div>
+        <p className="text-sm text-slate-200">
+          Kaj vas moti? Kaj bi radi videli? Kaj pogrešate? Vaš vtis nam ogromno
+          pomeni — <strong className="text-fuchsia-200">povejte</strong>. Klepet
+          je anonimen; nihče ne vidi, kdo je kaj napisal.
+        </p>
+        {session ? (
+          <p className="text-xs text-slate-400">
+            V klepetu se prikažete kot{' '}
+            <strong className="text-fuchsia-200">{mojPsev}</strong>. Vaše
+            registrirano ime ostane skrito.
+          </p>
+        ) : (
+          <p className="text-xs text-slate-400">
+            Za pisanje se prijavite (branje je javno). Vaše registrirano ime
+            ostane skrito, pojavite se pod naključnim psevdonimom.
+          </p>
+        )}
       </div>
 
       <div className="max-h-80 space-y-2 overflow-y-auto rounded-xl bg-slate-950/40 p-2">
