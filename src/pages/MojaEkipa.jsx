@@ -24,6 +24,7 @@ import {
 import Igrisce from '../components/Igrisce'
 import Grb from '../components/Grb'
 import Odstevanje from '../components/Odstevanje'
+import EnajstericaNaIgriscu from '../components/EnajstericaNaIgriscu'
 
 export default function MojaEkipa() {
   const { session, loading } = useAuth()
@@ -39,6 +40,8 @@ export default function MojaEkipa() {
   const [naslednjiKrog, setNaslednjiKrog] = useState(null)
   const [zadnjiKrog, setZadnjiKrog] = useState(null)
   const [tockeZadnjiKrog, setTockeZadnjiKrog] = useState({}) // player_id → points
+  const [posnetkiPoKrogih, setPosnetkiPoKrogih] = useState([]) // [{krog, igralci}]
+  const [zgodovinaKrogId, setZgodovinaKrogId] = useState(null)
   const [pripomocki, setPripomocki] = useState([])
   const [zaklenjenaPostava, setZaklenjenaPostava] = useState(null)
   const [pravila, setPravila] = useState({ prosti: 3, kazen: 4 })
@@ -164,6 +167,71 @@ export default function MojaEkipa() {
             ),
           )
         }
+
+        // Zgodovina postav — za vsak odigrani krog vzamemo fantasy_lineups
+        // snapshot in točke igralcev. Uporabniku omogoča ogled "kakšno ekipo
+        // sem imel v N. krogu".
+        const { data: posnetki } = await supabase
+          .from('fantasy_lineups')
+          .select(
+            'round_id, player_id, is_starter, is_captain, is_vice, bench_order, rounds(number, season, played_on)',
+          )
+          .eq('fantasy_team_id', moja.id)
+          .order('round_id', { ascending: false })
+        const idsIgralcev = [
+          ...new Set((posnetki ?? []).map((p) => p.player_id)),
+        ]
+        const roundIds = [...new Set((posnetki ?? []).map((p) => p.round_id))]
+        const [{ data: igralciDet }, { data: vseTocke }] = await Promise.all([
+          idsIgralcev.length
+            ? supabase
+                .from('player_overview')
+                .select(
+                  'id, full_name, position, team_name, team_short, team_logo, value',
+                )
+                .in('id', idsIgralcev)
+            : Promise.resolve({ data: [] }),
+          roundIds.length
+            ? supabase
+                .from('player_scores')
+                .select('round_id, player_id, points')
+                .in('round_id', roundIds)
+                .in('player_id', idsIgralcev)
+            : Promise.resolve({ data: [] }),
+        ])
+        const igralecPo = Object.fromEntries(
+          (igralciDet ?? []).map((i) => [i.id, i]),
+        )
+        const tockePo = new Map()
+        for (const t of vseTocke ?? [])
+          tockePo.set(`${t.round_id}-${t.player_id}`, Number(t.points))
+        const poKrogih = new Map()
+        for (const p of posnetki ?? []) {
+          const key = p.round_id
+          const prej = poKrogih.get(key) ?? {
+            round_id: key,
+            krog: p.rounds,
+            igralci: [],
+          }
+          const det = igralecPo[p.player_id]
+          if (det) {
+            prej.igralci.push({
+              ...det,
+              player_id: p.player_id,
+              is_starter: p.is_starter,
+              is_captain: p.is_captain,
+              is_vice: p.is_vice,
+              bench_order: p.bench_order,
+              points: tockePo.get(`${p.round_id}-${p.player_id}`) ?? 0,
+            })
+          }
+          poKrogih.set(key, prej)
+        }
+        const zgod = [...poKrogih.values()].sort(
+          (a, b) => (b.krog?.number ?? 0) - (a.krog?.number ?? 0),
+        )
+        setPosnetkiPoKrogih(zgod)
+        setZgodovinaKrogId(zgod[0]?.round_id ?? null)
       }
 
       setNalaganje(false)
@@ -703,6 +771,71 @@ export default function MojaEkipa() {
             naOdstrani={odstrani}
             naPraznoMesto={naPraznoMesto}
           />
+
+          {/* Zgodovina postav — za vsak odigran krog izberi in glej svojo
+              takratno ekipo (fantasy_lineups snapshot). */}
+          {posnetkiPoKrogih.length > 0 && (
+            <section className="kartica space-y-3 p-3 sm:p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-400">
+                  Zgodovina postav
+                </h2>
+                <span className="text-xs text-slate-500">
+                  {posnetkiPoKrogih.length}{' '}
+                  {posnetkiPoKrogih.length === 1
+                    ? 'krog s posnetkom'
+                    : 'krogov s posnetki'}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[...posnetkiPoKrogih]
+                  .sort(
+                    (a, b) => (a.krog?.number ?? 0) - (b.krog?.number ?? 0),
+                  )
+                  .map((p) => (
+                    <button
+                      key={p.round_id}
+                      onClick={() => setZgodovinaKrogId(p.round_id)}
+                      className={`znacka transition ${
+                        zgodovinaKrogId === p.round_id
+                          ? 'bg-gnl-500 text-slate-950'
+                          : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {p.krog?.number}. krog
+                    </button>
+                  ))}
+              </div>
+              {(() => {
+                const izbrani = posnetkiPoKrogih.find(
+                  (p) => p.round_id === zgodovinaKrogId,
+                )
+                if (!izbrani) return null
+                const starterji = izbrani.igralci.filter((i) => i.is_starter)
+                const skupaj = starterji.reduce(
+                  (v, s) =>
+                    v +
+                    Number(s.points ?? 0) *
+                      (s.is_captain ? KAPETAN_MNOZITELJ : 1),
+                  0,
+                )
+                return (
+                  <>
+                    <div className="text-xs text-slate-500">
+                      {izbrani.krog?.number}. krog ·{' '}
+                      sezona {izbrani.krog?.season} · skupaj{' '}
+                      <strong className="text-gnl-300">
+                        {skupaj.toFixed(0)} točk
+                      </strong>
+                    </div>
+                    <EnajstericaNaIgriscu
+                      igralci={starterji.map((s) => ({ ...s, position: s.position }))}
+                    />
+                  </>
+                )
+              })()}
+            </section>
+          )}
 
           {/* Skupaj v zadnjem odigranem krogu — vsota točk starterjev
               (kapetan × 3, ostali × 1) glede na dejansko stanje v krogu. */}
