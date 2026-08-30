@@ -796,70 +796,6 @@ export default function MojaEkipa() {
             </p>
           </section>
 
-          {/* Zgodovina postav — spodaj (na koncu strani), za pregled preteklih krogov. */}
-          {posnetkiPoKrogih.length > 0 && (
-            <section className="kartica space-y-3 p-3 sm:p-4">
-              <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-400">
-                  Zgodovina postav
-                </h2>
-                <span className="text-xs text-slate-500">
-                  {posnetkiPoKrogih.length}{' '}
-                  {posnetkiPoKrogih.length === 1
-                    ? 'krog s posnetkom'
-                    : 'krogov s posnetki'}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[...posnetkiPoKrogih]
-                  .sort(
-                    (a, b) => (a.krog?.number ?? 0) - (b.krog?.number ?? 0),
-                  )
-                  .map((p) => (
-                    <button
-                      key={p.round_id}
-                      onClick={() => setZgodovinaKrogId(p.round_id)}
-                      className={`znacka transition ${
-                        zgodovinaKrogId === p.round_id
-                          ? 'bg-gnl-500 text-slate-950'
-                          : 'bg-white/5 text-slate-300 hover:bg-white/10'
-                      }`}
-                    >
-                      {p.krog?.number}. krog
-                    </button>
-                  ))}
-              </div>
-              {(() => {
-                const izbrani = posnetkiPoKrogih.find(
-                  (p) => p.round_id === zgodovinaKrogId,
-                )
-                if (!izbrani) return null
-                const starterji = izbrani.igralci.filter((i) => i.is_starter)
-                const skupaj = starterji.reduce(
-                  (v, s) =>
-                    v +
-                    Number(s.points ?? 0) *
-                      (s.is_captain ? KAPETAN_MNOZITELJ : 1),
-                  0,
-                )
-                return (
-                  <>
-                    <div className="text-xs text-slate-500">
-                      {izbrani.krog?.number}. krog ·{' '}
-                      sezona {izbrani.krog?.season} · skupaj{' '}
-                      <strong className="text-gnl-300">
-                        {skupaj.toFixed(0)} točk
-                      </strong>
-                    </div>
-                    <EnajstericaNaIgriscu
-                      igralci={starterji.map((s) => ({ ...s, position: s.position }))}
-                    />
-                  </>
-                )
-              })()}
-            </section>
-          )}
-
           {/* Skupaj v zadnjem odigranem krogu — vsota točk starterjev
               (kapetan × 3, ostali × 1) glede na dejansko stanje v krogu. */}
           {zadnjiKrog &&
@@ -885,7 +821,106 @@ export default function MojaEkipa() {
               </section>
             )}
 
-          {/* Pripomočki (Klop+ + Wildcard) — trak je zdaj svoja sekcija zgoraj. */}
+          {/* status ekipe in shranjevanje */}
+          <section className="kartica p-3 sm:p-4">
+            {(() => {
+              const brezImena = !imeEkipe.trim()
+              const pripravljena = !brezImena && napakeEkipe.length === 0
+              return (
+                <div className="space-y-3">
+                  <div
+                    className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${
+                      pripravljena
+                        ? 'border-gnl-400/40 bg-gnl-500/10 text-gnl-200'
+                        : 'border-amber-400/30 bg-amber-500/5 text-amber-200'
+                    }`}
+                  >
+                    <span className="text-lg leading-none">
+                      {pripravljena ? '✅' : 'ℹ️'}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold">
+                        {pripravljena
+                          ? 'Ekipa je pripravljena za shranjevanje.'
+                          : 'Za dokončno shranitev je še nekaj potrebnega:'}
+                      </div>
+                      {!pripravljena && (
+                        <ul className="mt-2 space-y-1 text-amber-100/90">
+                          {brezImena && (
+                            <li>• Vpiši ime ekipe (v polju zgoraj).</li>
+                          )}
+                          {napakeEkipe.map((n) => (
+                            <li key={n}>• {n}</li>
+                          ))}
+                        </ul>
+                      )}
+                      {!pripravljena && !brezImena && (
+                        <div className="mt-2 text-xs text-slate-400">
+                          Osnutek lahko shraniš tudi zdaj — pravila boš dopolnil
+                          pozneje.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="hidden flex-wrap items-center gap-3 lg:flex">
+                    <button onClick={poskusiShraniti} className="gumb-glavni">
+                      {pripravljena ? 'Shrani ekipo' : 'Shrani osnutek'}
+                    </button>
+                    {brezImena && (
+                      <span className="text-xs text-rose-300">
+                        Ime ekipe je obvezno — klik te vrne na polje zgoraj.
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Kaj se pravzaprav zgodi ob shranjevanju — jasno pojasnilo. */}
+                  <div className="rounded-xl bg-slate-950/40 p-3 text-[11px] leading-snug text-slate-400">
+                    <strong className="text-slate-300">
+                      Kaj pomeni "Shrani"?
+                    </strong>{' '}
+                    Tvoje spremembe (kader, postava, kapetan) se zapišejo v bazo.
+                    Za trenutni krog velja stanje ob roku
+                    {naslednjiKrog?.deadline_at && (
+                      <>
+                        {' '}
+                        (
+                        <strong className="text-slate-300">
+                          {naslednjiKrog.number}. krog —{' '}
+                          {new Date(naslednjiKrog.deadline_at).toLocaleString(
+                            'sl-SI',
+                            {
+                              weekday: 'short',
+                              day: 'numeric',
+                              month: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            },
+                          )}
+                        </strong>
+                        )
+                      </>
+                    )}
+                    . Do roka lahko poljubno spreminjaš in ponovno pritiskaš
+                    Shrani — velja zadnja verzija.{' '}
+                    <strong className="text-slate-300">"Shrani osnutek"</strong>{' '}
+                    pomeni isto, samo z opombo, da ekipa še ne izpolnjuje vseh
+                    pravil (za točke rabiš popravke — glej seznam zgoraj).
+                  </div>
+
+                  {sporocilo && (
+                    <p className="text-sm text-gnl-300">{sporocilo}</p>
+                  )}
+                  {napaka && (
+                    <p className="text-sm text-rose-400">Napaka: {napaka}</p>
+                  )}
+                </div>
+              )
+            })()}
+          </section>
+
+          {/* Pripomočki (Klop+ + Wildcard) — enkratni bonusi, spodaj pod
+              glavnim tokom. */}
           <section className="kartica p-3 sm:p-4">
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
@@ -994,103 +1029,69 @@ export default function MojaEkipa() {
             </div>
           </section>
 
-          {/* status ekipe in shranjevanje */}
-          <section className="kartica p-3 sm:p-4">
-            {(() => {
-              const brezImena = !imeEkipe.trim()
-              const pripravljena = !brezImena && napakeEkipe.length === 0
-              return (
-                <div className="space-y-3">
-                  <div
-                    className={`flex items-start gap-2 rounded-xl border p-3 text-sm ${
-                      pripravljena
-                        ? 'border-gnl-400/40 bg-gnl-500/10 text-gnl-200'
-                        : 'border-amber-400/30 bg-amber-500/5 text-amber-200'
-                    }`}
-                  >
-                    <span className="text-lg leading-none">
-                      {pripravljena ? '✅' : 'ℹ️'}
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-semibold">
-                        {pripravljena
-                          ? 'Ekipa je pripravljena za shranjevanje.'
-                          : 'Za dokončno shranitev je še nekaj potrebnega:'}
-                      </div>
-                      {!pripravljena && (
-                        <ul className="mt-2 space-y-1 text-amber-100/90">
-                          {brezImena && (
-                            <li>• Vpiši ime ekipe (v polju zgoraj).</li>
-                          )}
-                          {napakeEkipe.map((n) => (
-                            <li key={n}>• {n}</li>
-                          ))}
-                        </ul>
-                      )}
-                      {!pripravljena && !brezImena && (
-                        <div className="mt-2 text-xs text-slate-400">
-                          Osnutek lahko shraniš tudi zdaj — pravila boš dopolnil
-                          pozneje.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="hidden flex-wrap items-center gap-3 lg:flex">
-                    <button onClick={poskusiShraniti} className="gumb-glavni">
-                      {pripravljena ? 'Shrani ekipo' : 'Shrani osnutek'}
+          {/* Zgodovina postav — na koncu, za pregled preteklih krogov. */}
+          {posnetkiPoKrogih.length > 0 && (
+            <section className="kartica space-y-3 p-3 sm:p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <h2 className="text-sm font-bold uppercase tracking-wide text-slate-400">
+                  Zgodovina postav
+                </h2>
+                <span className="text-xs text-slate-500">
+                  {posnetkiPoKrogih.length}{' '}
+                  {posnetkiPoKrogih.length === 1
+                    ? 'krog s posnetkom'
+                    : 'krogov s posnetki'}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {[...posnetkiPoKrogih]
+                  .sort(
+                    (a, b) => (a.krog?.number ?? 0) - (b.krog?.number ?? 0),
+                  )
+                  .map((p) => (
+                    <button
+                      key={p.round_id}
+                      onClick={() => setZgodovinaKrogId(p.round_id)}
+                      className={`znacka transition ${
+                        zgodovinaKrogId === p.round_id
+                          ? 'bg-gnl-500 text-slate-950'
+                          : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                      }`}
+                    >
+                      {p.krog?.number}. krog
                     </button>
-                    {brezImena && (
-                      <span className="text-xs text-rose-300">
-                        Ime ekipe je obvezno — klik te vrne na polje zgoraj.
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Kaj se pravzaprav zgodi ob shranjevanju — jasno pojasnilo. */}
-                  <div className="rounded-xl bg-slate-950/40 p-3 text-[11px] leading-snug text-slate-400">
-                    <strong className="text-slate-300">
-                      Kaj pomeni "Shrani"?
-                    </strong>{' '}
-                    Tvoje spremembe (kader, postava, kapetan) se zapišejo v bazo.
-                    Za trenutni krog velja stanje ob roku
-                    {naslednjiKrog?.deadline_at && (
-                      <>
-                        {' '}
-                        (
-                        <strong className="text-slate-300">
-                          {naslednjiKrog.number}. krog —{' '}
-                          {new Date(naslednjiKrog.deadline_at).toLocaleString(
-                            'sl-SI',
-                            {
-                              weekday: 'short',
-                              day: 'numeric',
-                              month: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            },
-                          )}
-                        </strong>
-                        )
-                      </>
-                    )}
-                    . Do roka lahko poljubno spreminjaš in ponovno pritiskaš
-                    Shrani — velja zadnja verzija.{' '}
-                    <strong className="text-slate-300">"Shrani osnutek"</strong>{' '}
-                    pomeni isto, samo z opombo, da ekipa še ne izpolnjuje vseh
-                    pravil (za točke rabiš popravke — glej seznam zgoraj).
-                  </div>
-
-                  {sporocilo && (
-                    <p className="text-sm text-gnl-300">{sporocilo}</p>
-                  )}
-                  {napaka && (
-                    <p className="text-sm text-rose-400">Napaka: {napaka}</p>
-                  )}
-                </div>
-              )
-            })()}
-          </section>
+                  ))}
+              </div>
+              {(() => {
+                const izbrani = posnetkiPoKrogih.find(
+                  (p) => p.round_id === zgodovinaKrogId,
+                )
+                if (!izbrani) return null
+                const starterji = izbrani.igralci.filter((i) => i.is_starter)
+                const skupaj = starterji.reduce(
+                  (v, s) =>
+                    v +
+                    Number(s.points ?? 0) *
+                      (s.is_captain ? KAPETAN_MNOZITELJ : 1),
+                  0,
+                )
+                return (
+                  <>
+                    <div className="text-xs text-slate-500">
+                      {izbrani.krog?.number}. krog · sezona {izbrani.krog?.season}{' '}
+                      · skupaj{' '}
+                      <strong className="text-gnl-300">
+                        {skupaj.toFixed(0)} točk
+                      </strong>
+                    </div>
+                    <EnajstericaNaIgriscu
+                      igralci={starterji.map((s) => ({ ...s, position: s.position }))}
+                    />
+                  </>
+                )
+              })()}
+            </section>
+          )}
         </div>
 
         {/* trg — na velikih zaslonih stranski stolpec, ki ostane na mestu */}
