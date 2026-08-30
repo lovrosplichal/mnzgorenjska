@@ -17,7 +17,9 @@ export default function Lestvica() {
   useEffect(() => {
     supabase
       .from('fantasy_team_standings')
-      .select('fantasy_team_id, team_name, owner_name, total_points')
+      .select(
+        'fantasy_team_id, team_name, owner_name, owner_registered_at, team_created_at, total_points',
+      )
       .order('total_points', { ascending: false })
       .then(({ data, error }) => {
         if (error) setNapaka(error.message)
@@ -295,7 +297,21 @@ export default function Lestvica() {
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-bold">{e.team_name}</div>
-                  <div className="text-xs text-slate-500">{e.owner_name}</div>
+                  <div className="text-xs text-slate-500">
+                    {e.owner_name}
+                    {(e.team_created_at ?? e.owner_registered_at) && (
+                      <span className="ml-2 text-slate-600">
+                        · igra od{' '}
+                        {new Date(
+                          e.team_created_at ?? e.owner_registered_at,
+                        ).toLocaleDateString('sl-SI', {
+                          day: 'numeric',
+                          month: 'numeric',
+                          year: 'numeric',
+                        })}
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <span className="text-xl font-black tabular-nums text-gnl-300">
                   {formatirajTocke(tocke)}

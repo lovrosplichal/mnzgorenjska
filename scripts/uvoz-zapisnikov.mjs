@@ -57,9 +57,9 @@ const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 // --- prenos s predpomnilnikom ---------------------------------------------
 if (!existsSync(PREDPOMNILNIK)) mkdirSync(PREDPOMNILNIK, { recursive: true })
 
-async function prenesi(url, datoteka) {
+async function prenesi(url, datoteka, sveze = false) {
   const pot = `${PREDPOMNILNIK}/${datoteka}`
-  if (existsSync(pot)) return readFileSync(pot, 'utf8')
+  if (!sveze && existsSync(pot)) return readFileSync(pot, 'utf8')
   const odgovor = await fetch(url)
   if (!odgovor.ok) throw new Error(`${url} -> HTTP ${odgovor.status}`)
   const besedilo = await odgovor.text()
@@ -220,7 +220,9 @@ if (pocisti) {
 // --- seznam zapisnikov ------------------------------------------------------
 const seznamUrl = `${IZVOR}/index.cfm?akc=tekmovanja&liga=${liga}`
 console.log(`Berem seznam tekem: ${seznamUrl}`)
-const seznam = await prenesi(seznamUrl, `liga-${liga}.html`)
+// Seznam se dnevno spreminja (nova tekma → nov zapisnik ID); vedno sveže,
+// da ne izpustimo pravkar objavljenih. Posamezne zapisnike lahko cachiramo.
+const seznam = await prenesi(seznamUrl, `liga-${liga}.html`, true)
 let ids = [...new Set([...seznam.matchAll(/zapisnik=(\d+)/g)].map((m) => m[1]))]
 ids.sort((a, b) => Number(a) - Number(b))
 if (omeji) ids = ids.slice(0, omeji)
