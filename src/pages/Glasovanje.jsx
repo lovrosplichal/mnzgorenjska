@@ -463,10 +463,14 @@ function GolKartica({
         <div className="px-4 pb-3">
           <div className="mb-1 flex justify-between text-xs text-slate-400">
             <span>
-              Vodi {prikazniIme(
-                kandidati.find((k) => k.player_id === vodilni.player_id)?.players
-                  ?.full_name,
-              ) || 'nekdo'}
+              {vodilni.player_id == null
+                ? 'Vodi »brez asistence« (asistenca ostane brez)'
+                : `Vodi ${
+                    prikazniIme(
+                      kandidati.find((k) => k.player_id === vodilni.player_id)
+                        ?.players?.full_name,
+                    ) || 'igralec brez zapisa'
+                  }`}
             </span>
             <span className="tabular-nums">
               {vodilni.votes} / {PRAG}
