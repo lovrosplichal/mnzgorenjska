@@ -537,6 +537,33 @@ export default function Domov() {
         </section>
       )}
 
+      {/* Povabi prijatelja — pomaga rasti bazi uporabnikov. Email-only,
+          da uporabnik izbere prejemnika (privzeto brez WhatsApp preskoka). */}
+      <section className="kartica overflow-hidden border-gnl-400/30 bg-gradient-to-br from-gnl-500/10 via-slate-950/50 to-fuchsia-500/10 p-4 sm:p-5">
+        <div className="flex flex-wrap items-center gap-4">
+          <span className="text-3xl">📧</span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-base font-bold text-gnl-100 sm:text-lg">
+              Povabi prijatelja v ligo
+            </h2>
+            <p className="mt-1 text-sm text-slate-300">
+              Več nas kot bo, bolj zabavno bo. Klikni gumb in ti odpremo
+              prazno e-pošto z že napisanim sporočilom — samo dodaj naslovnika.
+            </p>
+          </div>
+          <a
+            href={`mailto:?subject=${encodeURIComponent(
+              'Fantasy liga za 1. GNL — pridi zraven',
+            )}&body=${encodeURIComponent(
+              'Živjo!\n\nIgram fantasy nogometno ligo za 1. Gorenjsko nogometno ligo — sestaviš svojo ekipo iz igralcev iz naših klubov (Preddvor, Sava Kranj, Jezero Medvode, Bled-Bohinj Hirter, Britof, Visoko, Polet, Velesovo-Cerklje, Zarica, Bitnje, Niko Železniki, Tržič, Kranjska Gora) in tekmuješ z drugimi.\n\nPovsem brezplačno. Registriraj se na:\nhttps://slff.eu\n\nSestavi ekipo, določi kapetana in po vsakem krogu preveri, kdo je zbral največ točk.\n\nSe vidimo v ligi!',
+            )}`}
+            className="gumb-glavni shrink-0"
+          >
+            Odpri e-pošto
+          </a>
+        </div>
+      </section>
+
       {/* klepet — anonimni prostor za pogovor */}
       <Klepet />
 
