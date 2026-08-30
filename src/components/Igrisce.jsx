@@ -87,6 +87,26 @@ function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
         </span>
       )}
 
+      {/* Točke igralca v zadnjem odigranem krogu — modra značka zg. desno.
+          Če je kapetan, se prikaže x3 (uporabnik pa vidi surovo vrednost). */}
+      {igralec.tocke_krog != null && (
+        <span
+          title={`Točke v zadnjem krogu: ${igralec.tocke_krog}${
+            igralec.is_captain ? ' × 3 (kapetan)' : ''
+          }`}
+          className={`absolute -right-1 -bottom-1 flex min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-black
+                      ring-1 ring-white/30 sm:min-w-[1.5rem] sm:text-[11px] ${
+                        igralec.tocke_krog >= 8
+                          ? 'bg-gnl-400 text-slate-950'
+                          : igralec.tocke_krog >= 3
+                            ? 'bg-slate-100 text-slate-900'
+                            : 'bg-slate-700 text-slate-200'
+                      }`}
+        >
+          {igralec.tocke_krog}
+        </span>
+      )}
+
       {/* Na dotik ni prehoda z miško, zato je gumb za odstranitev vedno viden. */}
       <button
         onClick={naOdstrani}

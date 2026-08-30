@@ -37,6 +37,8 @@ export default function MojaEkipa() {
   const [zacetniIds, setZacetniIds] = useState(new Set())
   const [krogi, setKrogi] = useState([])
   const [naslednjiKrog, setNaslednjiKrog] = useState(null)
+  const [zadnjiKrog, setZadnjiKrog] = useState(null)
+  const [tockeZadnjiKrog, setTockeZadnjiKrog] = useState({}) // player_id → points
   const [pripomocki, setPripomocki] = useState([])
   const [zaklenjenaPostava, setZaklenjenaPostava] = useState(null)
   const [pravila, setPravila] = useState({ prosti: 3, kazen: 4 })
@@ -139,6 +141,29 @@ export default function MojaEkipa() {
               .map((v) => v.player_id),
           )
         }
+
+        // Točke igralcev v zadnjem odigranem krogu — da uporabnik vidi,
+        // koliko je vsak njegov igralec prinesel.
+        const { data: zadnji } = await supabase
+          .from('zadnji_odigrani_krog')
+          .select('id, number, season')
+          .maybeSingle()
+        setZadnjiKrog(zadnji ?? null)
+        if (zadnji && (nabor ?? []).length) {
+          const { data: tocke } = await supabase
+            .from('player_scores')
+            .select('player_id, points')
+            .eq('round_id', zadnji.id)
+            .in(
+              'player_id',
+              nabor.map((s) => s.player_id),
+            )
+          setTockeZadnjiKrog(
+            Object.fromEntries(
+              (tocke ?? []).map((t) => [t.player_id, Number(t.points)]),
+            ),
+          )
+        }
       }
 
       setNalaganje(false)
@@ -154,9 +179,14 @@ export default function MojaEkipa() {
   const izbraniPodrobno = useMemo(
     () =>
       izbrani
-        .map((s) => ({ ...poId[s.player_id], ...s }))
+        .map((s) => ({
+          ...poId[s.player_id],
+          ...s,
+          // Točke zadnjega odigranega kroga (za prikaz na igrišču).
+          tocke_krog: tockeZadnjiKrog[s.player_id] ?? null,
+        }))
         .filter((s) => s.id != null),
-    [izbrani, poId],
+    [izbrani, poId, tockeZadnjiKrog],
   )
 
   const proracun = ekipa?.budget ?? PRORACUN
@@ -673,6 +703,31 @@ export default function MojaEkipa() {
             naOdstrani={odstrani}
             naPraznoMesto={naPraznoMesto}
           />
+
+          {/* Skupaj v zadnjem odigranem krogu — vsota točk starterjev
+              (kapetan × 3, ostali × 1) glede na dejansko stanje v krogu. */}
+          {zadnjiKrog &&
+            Object.keys(tockeZadnjiKrog).length > 0 && (
+              <section className="kartica flex flex-wrap items-center justify-between gap-2 p-3 text-sm sm:p-4">
+                <span className="text-slate-400">
+                  Tvoja postava v <strong className="text-slate-200">{zadnjiKrog.number}. krogu</strong>{' '}
+                  ({zadnjiKrog.season})
+                </span>
+                <span className="text-lg font-black tabular-nums text-gnl-300">
+                  {izbraniPodrobno
+                    .filter((s) => s.is_starter)
+                    .reduce(
+                      (v, s) =>
+                        v +
+                        (s.tocke_krog ?? 0) *
+                          (s.is_captain ? KAPETAN_MNOZITELJ : 1),
+                      0,
+                    )
+                    .toFixed(0)}{' '}
+                  točk
+                </span>
+              </section>
+            )}
 
           {/* trak in pripomoček */}
           <section className="kartica grid gap-4 p-3 sm:grid-cols-2 sm:p-4">
