@@ -84,3 +84,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: node scripts/ugani-pozicije.mjs --pisi --samo-nove
+
+      # Samodejno mergira "duplikat" igralce, ki so se pojavili z istim
+      # imenom v drugem klubu (prestop). Le tam, kjer se casovnice NE
+      # prekrivajo — soimenjake pusti pri miru in v izpisu opozori.
+      - name: Zdruzi duplikate igralcev (prestopi)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: node scripts/zdruzi-duplikate.mjs --pisi
+        continue-on-error: true
