@@ -458,22 +458,38 @@ function GolKartica({
         )}
       </div>
 
-      {/* napredek do praga */}
+      {/* napredek do praga — VIDNO tudi pod pragom, da uporabnik ve, koliko
+          glasov je in kdo vodi */}
       {!potrjeno && vodilni && (
-        <div className="px-4 pb-3">
-          <div className="mb-1 flex justify-between text-xs text-slate-400">
-            <span>
-              {vodilni.player_id == null
-                ? 'Vodi »brez asistence« (asistenca ostane brez)'
-                : `Vodi ${
-                    prikazniIme(
+        <div className="space-y-2 border-t border-white/5 bg-slate-950/30 px-4 pb-3 pt-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <div className="text-sm">
+              {vodilni.player_id == null ? (
+                <>
+                  <strong className="text-slate-200">Vodi »brez asistence«</strong>
+                  <span className="ml-2 text-xs text-slate-500">
+                    (asistenca ostane brez)
+                  </span>
+                </>
+              ) : (
+                <>
+                  Vodi{' '}
+                  <strong className="text-gnl-200">
+                    {prikazniIme(
                       kandidati.find((k) => k.player_id === vodilni.player_id)
                         ?.players?.full_name,
-                    ) || 'igralec brez zapisa'
-                  }`}
-            </span>
-            <span className="tabular-nums">
-              {vodilni.votes} / {PRAG}
+                    ) || 'igralec brez zapisa'}
+                  </strong>
+                </>
+              )}
+            </div>
+            <span className="tabular-nums text-sm font-black text-gnl-300">
+              {vodilni.votes} / {PRAG}{' '}
+              <span className="text-xs font-normal text-slate-500">
+                {vodilni.votes >= PRAG
+                  ? 'potrjeno'
+                  : `— še ${PRAG - vodilni.votes} do potrditve`}
+              </span>
             </span>
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-white/10">
@@ -482,6 +498,19 @@ function GolKartica({
               style={{ width: `${Math.min(100, (vodilni.votes / PRAG) * 100)}%` }}
             />
           </div>
+          {/* Ostali kandidati z glasovi */}
+          {glasovi.length > 1 && (
+            <div className="text-xs text-slate-500">
+              Ostali: {glasovi
+                .slice(1)
+                .map((g) =>
+                  g.player_id == null
+                    ? `brez (${g.votes})`
+                    : `${prikazniIme(kandidati.find((k) => k.player_id === g.player_id)?.players?.full_name) || '?'} (${g.votes})`,
+                )
+                .join(' · ')}
+            </div>
+          )}
         </div>
       )}
 

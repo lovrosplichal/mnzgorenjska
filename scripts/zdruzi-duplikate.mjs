@@ -92,13 +92,12 @@ function prekrivataSe(a, b) {
 // --- merger enega OLD → NEW --------------------------------------------------
 async function merga(oldId, newId, kontekst) {
   const spremembe = []
+  // Tabele s "surovim" UPDATE-om, kjer unique constraint ni skrb.
   const enostavne = [
     ['appearances', 'player_id'],
     ['goals', 'scorer_id'],
     ['goals', 'assist_player_id'],
     ['price_changes', 'player_id'],
-    ['assist_votes', 'player_id'],
-    ['position_votes', 'player_id'],
     ['position_priors', 'player_id'],
   ]
   for (const [t, c] of enostavne) {
@@ -108,13 +107,67 @@ async function merga(oldId, newId, kontekst) {
       .eq(c, oldId)
       .select('*')
     if (error?.code === '23505') {
-      await db.from(t).delete().eq(c, oldId)
-      spremembe.push(`${t}.${c}: dupl. odstranjen`)
+      // Delete SAMO tiste specifične vrstice, ki povzročijo conflict —
+      // najdemo v bazi, ne pobrišemo pavšalno. Za price_changes/priors
+      // je edini unique (player_id, round_id/position), zato lahko
+      // varno vzamemo tiste, kjer za NEW že obstaja isti kljuc.
+      spremembe.push(`${t}.${c}: SPECIFICNI dupl. ni implementiran (skipped)`)
     } else if (error) {
       spremembe.push(`${t}.${c}: NAPAKA ${error.message}`)
     } else if (data?.length) {
       spremembe.push(`${t}.${c}: ${data.length}`)
     }
+  }
+  // assist_votes: unique (goal_id, voter_id). Če OLD ima glas za gol G od
+  // voterja V, IN NEW ima ze glas za isti (G, V) → OLD zbrišemo, NEW obdrži.
+  {
+    const { data: oldRows } = await db
+      .from('assist_votes')
+      .select('id, goal_id, voter_id')
+      .eq('player_id', oldId)
+    let u = 0, d = 0
+    for (const row of oldRows ?? []) {
+      const { data: obst } = await db
+        .from('assist_votes')
+        .select('id')
+        .eq('goal_id', row.goal_id)
+        .eq('voter_id', row.voter_id)
+        .eq('player_id', newId)
+        .maybeSingle()
+      if (obst) {
+        await db.from('assist_votes').delete().eq('id', row.id)
+        d++
+      } else {
+        await db.from('assist_votes').update({ player_id: newId }).eq('id', row.id)
+        u++
+      }
+    }
+    if (u || d) spremembe.push(`assist_votes: ${u} upd, ${d} del`)
+  }
+  // position_votes: unique (player_id, voter_id). Pri merga se KEY spremeni
+  // (player_id: OLD → NEW). Če voter je že glasoval za NEW → OLD zbrišemo.
+  {
+    const { data: oldRows } = await db
+      .from('position_votes')
+      .select('id, voter_id')
+      .eq('player_id', oldId)
+    let u = 0, d = 0
+    for (const row of oldRows ?? []) {
+      const { data: obst } = await db
+        .from('position_votes')
+        .select('id')
+        .eq('player_id', newId)
+        .eq('voter_id', row.voter_id)
+        .maybeSingle()
+      if (obst) {
+        await db.from('position_votes').delete().eq('id', row.id)
+        d++
+      } else {
+        await db.from('position_votes').update({ player_id: newId }).eq('id', row.id)
+        u++
+      }
+    }
+    if (u || d) spremembe.push(`position_votes: ${u} upd, ${d} del`)
   }
   // Tabele z composite PK-jem, kjer mora ročno preveriti dupe
   async function mergaComposite(t, dodatniKljuci) {
