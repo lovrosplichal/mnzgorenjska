@@ -772,8 +772,31 @@ export default function MojaEkipa() {
             naPraznoMesto={naPraznoMesto}
           />
 
-          {/* Zgodovina postav — za vsak odigran krog izberi in glej svojo
-              takratno ekipo (fantasy_lineups snapshot). */}
+          {/* Trak (kapetan + namestnik) — takoj pod igriscem, ker se
+              nanasa na igralce iz iste postave. */}
+          <section className="kartica space-y-2 p-3 sm:p-4">
+            <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
+              Trak
+            </h3>
+            <IzborTraku
+              oznaka={`Kapetan (×${KAPETAN_MNOZITELJ})`}
+              vrednost={prvi.find((s) => s.is_captain)?.id ?? ''}
+              moznosti={prvi}
+              naIzbor={(v) => nastaviTrak(v, 'is_captain')}
+            />
+            <IzborTraku
+              oznaka="Namestnik"
+              vrednost={prvi.find((s) => s.is_vice)?.id ?? ''}
+              moznosti={prvi}
+              naIzbor={(v) => nastaviTrak(v, 'is_vice')}
+            />
+            <p className="text-xs text-slate-500">
+              Kapetan prinese trojne točke. Če ne igra, trak prevzame
+              namestnik.
+            </p>
+          </section>
+
+          {/* Zgodovina postav — spodaj (na koncu strani), za pregled preteklih krogov. */}
           {posnetkiPoKrogih.length > 0 && (
             <section className="kartica space-y-3 p-3 sm:p-4">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -862,30 +885,8 @@ export default function MojaEkipa() {
               </section>
             )}
 
-          {/* trak in pripomoček */}
-          <section className="kartica grid gap-4 p-3 sm:grid-cols-2 sm:p-4">
-            <div className="space-y-2">
-              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Trak
-              </h3>
-              <IzborTraku
-                oznaka={`Kapetan (×${KAPETAN_MNOZITELJ})`}
-                vrednost={prvi.find((s) => s.is_captain)?.id ?? ''}
-                moznosti={prvi}
-                naIzbor={(v) => nastaviTrak(v, 'is_captain')}
-              />
-              <IzborTraku
-                oznaka="Namestnik"
-                vrednost={prvi.find((s) => s.is_vice)?.id ?? ''}
-                moznosti={prvi}
-                naIzbor={(v) => nastaviTrak(v, 'is_vice')}
-              />
-              <p className="text-xs text-slate-500">
-                Kapetan prinese trojne točke. Če ne igra, trak prevzame
-                namestnik.
-              </p>
-            </div>
-
+          {/* Pripomočki (Klop+ + Wildcard) — trak je zdaj svoja sekcija zgoraj. */}
+          <section className="kartica p-3 sm:p-4">
             <div className="space-y-2">
               <h3 className="text-xs font-bold uppercase tracking-wide text-slate-400">
                 Pripomoček Klop+
