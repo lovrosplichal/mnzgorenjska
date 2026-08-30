@@ -34,13 +34,23 @@ export default function Domov() {
               'played_on',
               new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10),
             ),
+          // Najboljši strelci TEKOČE sezone — iz player_season_standings.
           supabase
-            .from('player_overview')
-            .select(
-              'id, full_name, team_name, team_short, team_logo, position, value, goals, minutes',
-            )
-            .order('goals', { ascending: false })
-            .limit(5),
+            .from('sezone')
+            .select('season')
+            .eq('tekoca', true)
+            .maybeSingle()
+            .then(({ data }) =>
+              supabase
+                .from('player_season_standings')
+                .select(
+                  'id, full_name, team_name, team_short, team_logo, position, value, goals, minutes',
+                )
+                .eq('season', data?.season ?? '')
+                .order('goals', { ascending: false })
+                .order('minutes', { ascending: false })
+                .limit(5),
+            ),
         ])
       setStat({
         tekme: tekme.count ?? 0,
@@ -613,7 +623,7 @@ export default function Domov() {
       {/* zvezde */}
       {zvezde.length > 0 && (
         <section className="space-y-3">
-          <h2 className="text-xl font-bold">Najboljši strelci lani</h2>
+          <h2 className="text-xl font-bold">Najboljši strelci sezone</h2>
           <ul className="space-y-2">
             {zvezde.map((z, i) => (
               <li
