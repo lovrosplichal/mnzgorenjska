@@ -11,6 +11,7 @@ import {
   formatirajCeno,
 } from '../lib/pomozno'
 import Grb from '../components/Grb'
+import { tockeZaNastop } from '../lib/tockovanje'
 
 const POZICIJE = ['GK', 'DEF', 'MID', 'FWD']
 const IKONA = { GK: '🧤', DEF: '🛡️', MID: '⚙️', FWD: '🎯' }
@@ -20,6 +21,9 @@ export default function Igralec() {
   const { session } = useAuth()
   const [igralec, setIgralec] = useState(null)
   const [krogi, setKrogi] = useState([])
+  // Per-krog razlaga točk: [{round_id, number, season, postavke: [{opis,tocke}], skupaj, minute}]
+  const [razlage, setRazlage] = useState([])
+  const [odprtRazlaga, setOdprtRazlaga] = useState(null)
   const [cene, setCene] = useState([])
   const [tekme, setTekme] = useState([])
   const [glasovi, setGlasovi] = useState({})
@@ -88,6 +92,54 @@ export default function Igralec() {
       setCene(c ?? [])
       setTekme(t ?? [])
       setGlasovi(Object.fromEntries((g ?? []).map((v) => [v.position, v.votes])))
+
+      // Razlaga točk per krog — nastopi + goli + asistence
+      const { data: nastopi } = await supabase
+        .from('appearances')
+        .select(
+          'match_id, minutes_played, goals, own_goals, penalties_missed, penalties_saved, yellow_cards, red_cards, goals_conceded, clean_sheet, matches(round_id, rounds(number, season, played_on))',
+        )
+        .eq('player_id', id)
+      // Asistence: število golov, kjer je ta igralec confirmed asistent
+      const { data: asistGoli } = await supabase
+        .from('goals')
+        .select('match_id')
+        .eq('assist_player_id', id)
+      const asistPoMatchu = new Map()
+      for (const gg of asistGoli ?? [])
+        asistPoMatchu.set(gg.match_id, (asistPoMatchu.get(gg.match_id) ?? 0) + 1)
+
+      const pozicija = p?.position
+      const raz = []
+      for (const n of nastopi ?? []) {
+        const r = n.matches?.rounds
+        if (!r) continue
+        const nastop = {
+          minute: n.minutes_played,
+          goli: n.goals,
+          asistence: asistPoMatchu.get(n.match_id) ?? 0,
+          cleanSheet: n.clean_sheet,
+          prejetiGoli: n.goals_conceded,
+          obranjeneEnajstmetrovke: n.penalties_saved,
+          zgreseneEnajstmetrovke: n.penalties_missed,
+          avtogoli: n.own_goals,
+          rumeni: n.yellow_cards,
+          rdeci: n.red_cards,
+        }
+        const { skupaj, postavke } = tockeZaNastop(nastop, pozicija)
+        raz.push({
+          round_id: n.matches.round_id,
+          number: r.number,
+          season: r.season,
+          played_on: r.played_on,
+          match_id: n.match_id,
+          minute: n.minutes_played,
+          postavke,
+          skupaj,
+        })
+      }
+      raz.sort((a, b) => (b.played_on ?? '').localeCompare(a.played_on ?? ''))
+      setRazlage(raz)
 
       if (session) {
         const { data: moj } = await supabase
@@ -287,29 +339,90 @@ export default function Igralec() {
         </section>
       )}
 
-      {/* zadnji krogi */}
-      {krogi.length > 0 && (
-        <section className="kartica p-4">
+      {/* zadnji krogi + razlaga točk */}
+      {razlage.length > 0 && (
+        <section className="kartica p-3 sm:p-4">
           <h2 className="mb-3 text-xs font-bold uppercase tracking-wide text-slate-400">
-            Zadnji krogi
+            Točke po krogih
           </h2>
+          <p className="mb-3 text-[11px] text-slate-500">
+            Klikni krog za razlago, iz kje točke prihajajo.
+          </p>
           <ul className="space-y-1">
-            {krogi.map((k, n) => (
-              <li
-                key={n}
-                className="flex items-center justify-between gap-3 rounded-lg bg-white/5 px-3 py-1.5 text-sm"
-              >
-                <span className="text-slate-400">
-                  {k.rounds?.number}. krog
-                  <span className="ml-2 text-xs text-slate-600">
-                    {k.rounds?.season}
-                  </span>
-                </span>
-                <span className="font-black tabular-nums">
-                  {formatirajTocke(k.points)}
-                </span>
-              </li>
-            ))}
+            {razlage.map((r) => {
+              const odprto = odprtRazlaga === r.round_id
+              return (
+                <li key={r.round_id} className="rounded-lg bg-white/5">
+                  <button
+                    onClick={() =>
+                      setOdprtRazlaga(odprto ? null : r.round_id)
+                    }
+                    className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm"
+                  >
+                    <span className="text-slate-300">
+                      <strong className="text-slate-100">
+                        {r.number}. krog
+                      </strong>
+                      <span className="ml-2 text-xs text-slate-500">
+                        {r.season} · {r.minute} min
+                      </span>
+                    </span>
+                    <span className="flex items-center gap-2">
+                      <span
+                        className={`font-black tabular-nums ${
+                          r.skupaj > 0
+                            ? 'text-gnl-300'
+                            : r.skupaj < 0
+                              ? 'text-rose-400'
+                              : 'text-slate-400'
+                        }`}
+                      >
+                        {formatirajTocke(r.skupaj)}
+                      </span>
+                      <span className="text-xs text-slate-500">
+                        {odprto ? '▲' : '▼'}
+                      </span>
+                    </span>
+                  </button>
+                  {odprto && (
+                    <div className="border-t border-white/5 px-3 py-2">
+                      {r.postavke.length === 0 ? (
+                        <p className="text-xs text-slate-500">
+                          Ni igralnega časa — 0 točk.
+                        </p>
+                      ) : (
+                        <ul className="space-y-1 text-xs">
+                          {r.postavke.map((p, i) => (
+                            <li
+                              key={i}
+                              className="flex justify-between gap-3"
+                            >
+                              <span className="text-slate-400">{p.opis}</span>
+                              <span
+                                className={`font-bold tabular-nums ${
+                                  p.tocke > 0
+                                    ? 'text-gnl-300'
+                                    : 'text-rose-400'
+                                }`}
+                              >
+                                {p.tocke > 0 ? '+' : ''}
+                                {p.tocke}
+                              </span>
+                            </li>
+                          ))}
+                          <li className="mt-1 flex justify-between gap-3 border-t border-white/10 pt-1 text-slate-300">
+                            <span className="font-semibold">Skupaj</span>
+                            <span className="font-black tabular-nums">
+                              {formatirajTocke(r.skupaj)}
+                            </span>
+                          </li>
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </li>
+              )
+            })}
           </ul>
         </section>
       )}

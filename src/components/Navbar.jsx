@@ -12,6 +12,14 @@ const povezave = [
   { pot: '/lestvica', naslov: 'Lestvica' },
 ]
 
+const VABILO_MAILTO =
+  'mailto:?subject=' +
+  encodeURIComponent('Fantasy liga za 1. GNL — pridi zraven') +
+  '&body=' +
+  encodeURIComponent(
+    'Živjo!\n\nIgram fantasy nogometno ligo za 1. Gorenjsko nogometno ligo — sestaviš svojo ekipo iz igralcev naših klubov (Preddvor, Sava Kranj, Jezero Medvode, Bled-Bohinj Hirter, Britof, Visoko, Polet, Velesovo-Cerklje, Zarica, Bitnje, Niko Železniki, Tržič, Kranjska Gora) in tekmuješ z drugimi.\n\nPovsem brezplačno. Registriraj se na:\nhttps://slff.eu\n\nSestavi ekipo, določi kapetana in po vsakem krogu preveri, kdo je zbral največ točk.\n\nSe vidimo v ligi!',
+  )
+
 export default function Navbar() {
   const { session } = useAuth()
   const [jeAdmin, setJeAdmin] = useState(false)
@@ -79,6 +87,13 @@ export default function Navbar() {
                 )}
               </NavLink>
             ))}
+            {/* Povabi prijatelja — mailto link odpre lokalni mail klient. */}
+            <a
+              href={VABILO_MAILTO}
+              className="rounded-lg bg-fuchsia-500/15 px-3 py-1.5 font-semibold text-fuchsia-200 ring-1 ring-fuchsia-400/30 hover:bg-fuchsia-500/25"
+            >
+              ✉️ Povabi
+            </a>
           </div>
 
           <div className="ml-auto text-sm lg:ml-0">
@@ -126,6 +141,13 @@ export default function Navbar() {
                 )}
               </NavLink>
             ))}
+            <a
+              href={VABILO_MAILTO}
+              className="col-span-2 rounded-lg bg-fuchsia-500/15 px-3 py-1.5 text-center font-semibold text-fuchsia-200 ring-1 ring-fuchsia-400/30"
+              onClick={() => setOdprt(false)}
+            >
+              ✉️ Povabi prijatelja
+            </a>
           </div>
         )}
       </nav>
