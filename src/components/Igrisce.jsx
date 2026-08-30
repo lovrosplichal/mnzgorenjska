@@ -103,19 +103,15 @@ function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
         </span>
       )}
 
-      {/* Gumb za odstranitev — če ima igralec točke, se zgornji desni kot
-          zasede z barvasto značko; delete gremo v spodnji desni kot, kjer
-          ne moti berljivosti. */}
+      {/* Gumb za odstranitev — vedno v istem kotu (spodaj desno), ne glede
+          na to, ali ima igralec točke. Prej dinamičen položaj, kar je
+          zmedlo uporabnike. */}
       <button
         onClick={naOdstrani}
         title="Odstrani iz kadra"
-        className={`absolute flex h-5 w-5 items-center justify-center rounded-full
-                    bg-slate-900/90 text-[10px] text-slate-300 ring-1 ring-white/20
-                    hover:text-rose-400 lg:hidden lg:group-hover:flex ${
-                      igralec.tocke_krog != null
-                        ? '-right-1 -bottom-1'
-                        : '-right-1 -top-1'
-                    }`}
+        className="absolute -right-1 -bottom-1 flex h-5 w-5 items-center justify-center
+                   rounded-full bg-slate-900/90 text-[10px] text-slate-300 ring-1
+                   ring-white/20 hover:text-rose-400 lg:hidden lg:group-hover:flex"
       >
         ✕
       </button>
