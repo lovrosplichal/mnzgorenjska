@@ -24,6 +24,8 @@ Pri **5 glasovih** za istega kandidata se podatek potrdi in začne šteti.
 - **Glasovanje o asistencah** — skupnost pove, kdo je podal; pri 5 glasovih se potrdi.
 - **Glasovanje o pozicijah** — zapisnik pozicij ne pove, zato jih določi skupnost.
 - **Točkovanje** — po pravilih lige iz statistike zapisnikov (glej spodaj).
+- **Rezultati** — odigrane tekme; klik na tekmo pokaže obe postavi na igrišču in
+  točke, ki jih je posamezen igralec na njej zaslužil.
 - **Lestvica** — skupna razvrstitev vseh fantasy ekip.
 - **Uporabniški računi** — registracija in prijava z e-pošto in geslom.
 - **Pregled kluba/igralcev** — seznam ekip in igralcev 1. GNL.
@@ -116,7 +118,8 @@ rezervnih igralcev.
 | `player_scores` | Točke igralca po krogih |
 | `settings` | Pragova glasov (privzeto 5) |
 
-Pogledi: `appearance_points` (točke nastopa), `player_overview`, `player_season_stats`,
+Pogledi: `appearance_points` (točke nastopa), `tekma_nastopi` (postavi tekme s točkami),
+`player_overview`, `player_season_stats`,
 `player_standings` (lestvica igralcev: točke, forma, na tekmo, izbranost),
 `minute_kroga`, `fantasy_round_points` (točke ekipe po krogih, z menjavami in kapetanom),
 `fantasy_team_standings`, `fantasy_team_budget`.

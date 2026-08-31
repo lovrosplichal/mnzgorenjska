@@ -7,6 +7,8 @@ import Navbar from '../src/components/Navbar'
 import Domov from '../src/pages/Domov'
 import Igralci from '../src/pages/Igralci'
 import Lestvica from '../src/pages/Lestvica'
+import Rezultati from '../src/pages/Rezultati'
+import Tekma from '../src/pages/Tekma'
 import Prijava from '../src/pages/Prijava'
 import MojaEkipa from '../src/pages/MojaEkipa'
 import Glasovanje from '../src/pages/Glasovanje'
@@ -38,6 +40,8 @@ const strani = [
   ['Pozicije', Pozicije, '/pozicije'],
   ['Igralci', Igralci, '/igralci'],
   ['Lestvica', Lestvica, '/lestvica'],
+  ['Rezultati', Rezultati, '/rezultati'],
+  ['Tekma', Tekma, '/tekma/1'],
   ['Prijava', Prijava, '/prijava'],
   ['Administracija', Administracija, '/admin'],
 ]

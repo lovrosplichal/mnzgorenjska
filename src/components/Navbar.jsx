@@ -9,6 +9,7 @@ const povezave = [
   { pot: '/glasovanje', naslov: 'Asistence' },
   { pot: '/pozicije', naslov: 'Pozicije' },
   { pot: '/igralci', naslov: 'Igralci' },
+  { pot: '/rezultati', naslov: 'Rezultati' },
   { pot: '/lestvica', naslov: 'Lestvica' },
 ]
 

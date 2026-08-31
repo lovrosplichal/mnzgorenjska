@@ -598,9 +598,12 @@ export default function Domov() {
             <h2 className="text-xl font-bold">
               Najboljši v zadnjem odigranem krogu
             </h2>
-            <span className="text-sm text-slate-500">
-              {krog?.number}. krog · sezona {krog?.season}
-            </span>
+            <Link
+              to="/rezultati"
+              className="text-sm text-slate-500 underline hover:text-gnl-300"
+            >
+              {krog?.number}. krog · rezultati tekem →
+            </Link>
           </div>
           <ul className="space-y-2">
             {krogNajboljsi.map((z, i) => (

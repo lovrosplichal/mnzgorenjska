@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { prikazniIme, razredPozicije, KRATKA_POZICIJA } from '../lib/pomozno'
@@ -339,6 +340,17 @@ export default function Glasovanje() {
           </span>
           <Grb ime={tekma.away_name} kratko={tekma.away_short} logo={tekma.away_logo} velikost={32} />
         </div>
+      )}
+
+      {tekma && (
+        <p className="text-center">
+          <Link
+            to={`/tekma/${tekma.match_id}`}
+            className="text-sm text-slate-400 underline hover:text-gnl-300"
+          >
+            Poglej postavi in točke te tekme →
+          </Link>
+        </p>
       )}
 
       {goli.length === 0 ? (

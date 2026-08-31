@@ -34,6 +34,8 @@ Lokalni razvoj teče na Supabase CLI stacku v Dockerju (`npx supabase start`).
 - `ucinkovita_postava(ekipa, krog)` → postava po samodejnih menjavah z množitelji;
   iz nje računata `fantasy_round_points` in `fantasy_team_standings`
 - `player_standings` → lestvica igralcev (točke, forma, na tekmo, izbranost)
+- `tekma_nastopi` → nastopi na tekmi s točkami; stran Rezultati iz njih nariše
+  obe postavi (`/rezultati` in `/tekma/:id`)
 - `match_assist_status` → odigrane tekme s številom golov brez asistence
   (stran Asistence izbira po korakih: krog → tekma → gol)
 - `naslednji_krog` → prvi krog, ki se še ni zaklenil (rok na strani Moja ekipa)

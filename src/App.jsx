@@ -5,6 +5,8 @@ import Domov from './pages/Domov'
 import Igralci from './pages/Igralci'
 import Igralec from './pages/Igralec'
 import Lestvica from './pages/Lestvica'
+import Rezultati from './pages/Rezultati'
+import Tekma from './pages/Tekma'
 import Prijava from './pages/Prijava'
 import NovoGeslo from './pages/NovoGeslo'
 import Pravno from './pages/Pravno'
@@ -27,6 +29,8 @@ export default function App() {
             <Route path="/igralci" element={<Igralci />} />
             <Route path="/igralec/:id" element={<Igralec />} />
             <Route path="/lestvica" element={<Lestvica />} />
+            <Route path="/rezultati" element={<Rezultati />} />
+            <Route path="/tekma/:id" element={<Tekma />} />
             <Route path="/prijava" element={<Prijava />} />
             <Route path="/novo-geslo" element={<NovoGeslo />} />
             <Route path="/pravno" element={<Pravno />} />

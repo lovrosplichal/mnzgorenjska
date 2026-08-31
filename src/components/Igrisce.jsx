@@ -12,33 +12,7 @@ import {
   formatirajCeno,
 } from '../lib/pomozno'
 import Grb from './Grb'
-
-const BARVA_DRESA = {
-  GK: { dres: '#fbbf24', rokav: '#d97706' },
-  DEF: { dres: '#38bdf8', rokav: '#0284c7' },
-  MID: { dres: '#34d399', rokav: '#059669' },
-  FWD: { dres: '#fb7185', rokav: '#e11d48' },
-}
-
-function Dres({ pozicija }) {
-  const barva = BARVA_DRESA[pozicija] ?? { dres: '#94a3b8', rokav: '#475569' }
-  return (
-    <svg
-      viewBox="0 0 48 44"
-      className="h-7 w-8 drop-shadow sm:h-9 sm:w-10"
-      aria-hidden="true"
-    >
-      <path
-        d="M17 3 L24 7 L31 3 L44 10 L39 19 L34 16 V41 H14 V16 L9 19 L4 10 Z"
-        fill={barva.dres}
-        stroke={barva.rokav}
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
-      <path d="M17 3 L24 10 L31 3" fill="none" stroke={barva.rokav} strokeWidth="2" />
-    </svg>
-  )
-}
+import Dres from './Dres'
 
 function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
   return (
@@ -57,7 +31,7 @@ function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
         className="block w-full transition duration-150 active:scale-95 sm:hover:-translate-y-0.5"
       >
         <div className="flex justify-center">
-          <Dres pozicija={igralec.position} />
+          <Dres pozicija={igralec.position} razred="h-7 w-8 sm:h-9 sm:w-10" />
         </div>
         <div className="mt-0.5 truncate rounded-t-md bg-slate-900/90 px-1 py-0.5 text-[10px] font-semibold leading-tight sm:text-[11px]">
           {prikazniIme(igralec.full_name).split(' ').slice(-1)[0]}
