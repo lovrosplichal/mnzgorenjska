@@ -118,7 +118,7 @@ rezervnih igralcev.
 | `player_scores` | Točke igralca po krogih |
 | `settings` | Pragova glasov (privzeto 5) |
 
-Pogledi: `appearance_points` (točke nastopa), `tekma_nastopi` (postavi tekme s točkami),
+Pogledi: `appearance_points` (točke nastopa),
 `player_overview`, `player_season_stats`,
 `player_standings` (lestvica igralcev: točke, forma, na tekmo, izbranost),
 `minute_kroga`, `fantasy_round_points` (točke ekipe po krogih, z menjavami in kapetanom),

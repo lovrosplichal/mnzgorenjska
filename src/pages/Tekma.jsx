@@ -27,31 +27,55 @@ export default function Tekma() {
     let preklican = false
     async function nalozi() {
       setNalaganje(true)
-      const [{ data: t, error: eT }, { data: n, error: eN }, { data: g, error: eG }] =
-        await Promise.all([
-          supabase
-            .from('match_assist_status')
-            .select('*')
-            .eq('match_id', id)
-            .maybeSingle(),
-          supabase
-            .from('tekma_nastopi')
-            .select('*')
-            .eq('match_id', id)
-            .order('shirt_number', { nullsFirst: false }),
-          supabase
-            .from('goals')
-            .select(
-              'id, minute, is_own_goal, is_penalty, score_home, score_away, team_id, scorer:scorer_id(full_name), assist:assist_player_id(full_name)',
-            )
-            .eq('match_id', id)
-            .order('minute'),
-        ])
+      // Nastope in tocke beremo iz obstojecih tabel in pogleda appearance_points
+      // ter ju zdruzimo tu. Tako stran deluje brez nove migracije v bazi.
+      const [
+        { data: t, error: eT },
+        { data: nastopiTekme, error: eN },
+        { data: tockeNastopov, error: eP },
+        { data: g, error: eG },
+      ] = await Promise.all([
+        supabase
+          .from('match_assist_status')
+          .select('*')
+          .eq('match_id', id)
+          .maybeSingle(),
+        supabase
+          .from('appearances')
+          .select(
+            'id, team_id, player_id, started, shirt_number, minutes_played, goals, own_goals, penalties_scored, penalties_missed, penalties_saved, yellow_cards, red_cards, goals_conceded, clean_sheet, players(full_name, position)',
+          )
+          .eq('match_id', id)
+          .order('shirt_number', { nullsFirst: false }),
+        supabase
+          .from('appearance_points')
+          .select('appearance_id, points, assists')
+          .eq('match_id', id),
+        supabase
+          .from('goals')
+          .select(
+            'id, minute, is_own_goal, is_penalty, score_home, score_away, team_id, scorer:scorer_id(full_name), assist:assist_player_id(full_name)',
+          )
+          .eq('match_id', id)
+          .order('minute'),
+      ])
       if (preklican) return
-      const napacno = eT ?? eN ?? eG
+      const napacno = eT ?? eN ?? eP ?? eG
       if (napacno) setNapaka(napacno.message)
+
+      const tocke = Object.fromEntries(
+        (tockeNastopov ?? []).map((x) => [x.appearance_id, x]),
+      )
       setTekma(t ?? null)
-      setNastopi(n ?? [])
+      setNastopi(
+        (nastopiTekme ?? []).map((n) => ({
+          ...n,
+          full_name: n.players?.full_name,
+          position: n.players?.position,
+          points: tocke[n.id]?.points ?? 0,
+          assists: tocke[n.id]?.assists ?? 0,
+        })),
+      )
       setGoli(g ?? [])
       setNalaganje(false)
     }
