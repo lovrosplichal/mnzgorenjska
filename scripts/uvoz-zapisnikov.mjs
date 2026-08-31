@@ -68,24 +68,27 @@ async function prenesi(url, datoteka, sveze = false) {
 }
 
 // --- predpomnilnik za klube in igralce -------------------------------------
-const klubi = new Map() // ime -> id
+// Zapisnik in razpored isti klub pišeta različno ("Bled Bohinj Hirter" proti
+// "Bled - Bohinj Hirter"), zato klube iščemo po poenostavljenem imenu — brez
+// ločil in velikih črk. Ujemanje po natančnem imenu je ob prvem zapisniku nove
+// sezone ustvarilo dvojnik kluba in sezono razklalo na dva zapisa.
+const poenostavi = (ime) =>
+  ime
+    .toLowerCase()
+    .replace(/[^a-zčšž0-9]+/g, ' ')
+    .trim()
+
+const klubi = new Map() // poenostavljeno ime -> id
+const { data: vsiKlubi } = await db.from('teams').select('id, name')
+for (const k of vsiKlubi ?? []) klubi.set(poenostavi(k.name), k.id)
 const igralci = new Map() // `${team_id}|${ime}` -> id
 
 async function klubId(ime) {
-  const kljuc = ime.trim()
+  const kljuc = poenostavi(ime)
   if (klubi.has(kljuc)) return klubi.get(kljuc)
 
-  const { data: obstoj } = await db
-    .from('teams')
-    .select('id')
-    .eq('name', kljuc)
-    .maybeSingle()
-  if (obstoj) {
-    klubi.set(kljuc, obstoj.id)
-    return obstoj.id
-  }
-
-  const kratko = kljuc
+  const polnoIme = ime.trim()
+  const kratko = polnoIme
     .split(/\s+/)
     .map((d) => d[0])
     .join('')
@@ -93,10 +96,11 @@ async function klubId(ime) {
     .slice(0, 4)
   const { data, error } = await db
     .from('teams')
-    .insert({ name: kljuc, short_name: kratko })
+    .insert({ name: polnoIme, short_name: kratko })
     .select('id')
     .single()
-  if (error) throw new Error(`klub ${kljuc}: ${error.message}`)
+  if (error) throw new Error(`klub ${polnoIme}: ${error.message}`)
+  console.log(`  nov klub: ${polnoIme}`)
   klubi.set(kljuc, data.id)
   return data.id
 }
