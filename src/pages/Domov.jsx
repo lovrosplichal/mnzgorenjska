@@ -49,7 +49,7 @@ export default function Domov() {
                 .eq('season', data?.season ?? '')
                 .order('goals', { ascending: false })
                 .order('minutes', { ascending: false })
-                .limit(5),
+                .limit(10),
             ),
         ])
       setStat({
@@ -141,7 +141,7 @@ export default function Domov() {
           .eq('round_id', zadnji.id)
           .order('points', { ascending: false })
           .limit(50)
-        setKrogNajboljsi((najboljsi ?? []).slice(0, 5))
+        setKrogNajboljsi((najboljsi ?? []).slice(0, 10))
 
         // Idealna enajsterica: 1 GK + top 4 DEF + top 4 MID + top 2 FWD
         // po točkah v zadnjem odigranem krogu. Če je pozicij premalo,
@@ -372,50 +372,107 @@ export default function Domov() {
 
       {/* igralec kroga in najboljši strelci — eden ob drugem */}
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        {/* Igralec kroga — najboljši posameznik kroga, velika kartica. */}
-        {krogNajboljsi[0] && (
-          <section className="relative overflow-hidden rounded-3xl border border-amber-300/40 bg-gradient-to-br from-amber-500/20 via-slate-950/60 to-fuchsia-500/10 p-5 shadow-lg shadow-black/40 sm:p-6">
-            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-              <div className="text-5xl sm:text-6xl">🌟</div>
-              <div className="min-w-0 flex-1">
-                <div className="text-xs font-bold uppercase tracking-wide text-amber-200/80">
-                  Igralec {krog?.number}. kroga
-                </div>
-                <Link
-                  to={`/igralec/${krogNajboljsi[0].player_id}`}
-                  className="mt-1 block truncate text-3xl font-black text-white hover:text-gnl-200 sm:text-4xl"
-                >
-                  {prikazniIme(krogNajboljsi[0].full_name)}
-                </Link>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
-                  <Grb
-                    ime={krogNajboljsi[0].team_name}
-                    kratko={krogNajboljsi[0].team_short}
-                    logo={krogNajboljsi[0].team_logo}
-                    velikost={20}
-                  />
-                  <span>{krogNajboljsi[0].team_name}</span>
-                  <span
-                    className={`znacka poz-${krogNajboljsi[0].position}`}
+        <div className="space-y-2">
+          {/* Igralec kroga — najboljši posameznik kroga, velika kartica. */}
+          {krogNajboljsi[0] && (
+            <section className="relative overflow-hidden rounded-3xl border border-amber-300/40 bg-gradient-to-br from-amber-500/20 via-slate-950/60 to-fuchsia-500/10 p-5 shadow-lg shadow-black/40 sm:p-6">
+              <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                <div className="text-5xl sm:text-6xl">🌟</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-bold uppercase tracking-wide text-amber-200/80">
+                    Igralec {krog?.number}. kroga
+                  </div>
+                  <Link
+                    to={`/igralec/${krogNajboljsi[0].player_id}`}
+                    className="mt-1 block truncate text-3xl font-black text-white hover:text-gnl-200 sm:text-4xl"
                   >
-                    {krogNajboljsi[0].position}
-                  </span>
-                  <span className="text-slate-500">
-                    · {krogNajboljsi[0].minutes} min
-                  </span>
+                    {prikazniIme(krogNajboljsi[0].full_name)}
+                  </Link>
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-slate-300">
+                    <Grb
+                      ime={krogNajboljsi[0].team_name}
+                      kratko={krogNajboljsi[0].team_short}
+                      logo={krogNajboljsi[0].team_logo}
+                      velikost={20}
+                    />
+                    <span>{krogNajboljsi[0].team_name}</span>
+                    <span
+                      className={`znacka poz-${krogNajboljsi[0].position}`}
+                    >
+                      {krogNajboljsi[0].position}
+                    </span>
+                    <span className="text-slate-500">
+                      · {krogNajboljsi[0].minutes} min
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="text-4xl font-black tabular-nums text-amber-200 sm:text-5xl">
+                    {formatirajTocke(krogNajboljsi[0].points)}
+                  </div>
+                  <div className="text-xs uppercase tracking-wide text-slate-400">
+                    točk
+                  </div>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-4xl font-black tabular-nums text-amber-200 sm:text-5xl">
-                  {formatirajTocke(krogNajboljsi[0].points)}
-                </div>
-                <div className="text-xs uppercase tracking-wide text-slate-400">
-                  točk
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
+            </section>
+          )}
+
+          {/* Za zvezdo kroga se lestvica nadaljuje: 2., 3., 4. … */}
+          {krogNajboljsi.length > 1 && (
+            <ul className="space-y-1.5">
+              {krogNajboljsi.slice(1).map((z, i) => (
+                <li
+                  key={z.player_id}
+                  className="kartica kartica-hover flex items-center gap-2 p-2.5 sm:gap-3"
+                >
+                  <span className="w-6 text-center font-black text-slate-500">
+                    {i + 2}
+                  </span>
+                  <Grb
+                    ime={z.team_name}
+                    kratko={z.team_short}
+                    logo={z.team_logo}
+                    velikost={22}
+                  />
+                  <Link
+                    to={`/igralec/${z.player_id}`}
+                    className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
+                  >
+                    {prikazniIme(z.full_name)}
+                  </Link>
+                  <span className="hidden text-xs text-slate-500 sm:inline">
+                    {z.minutes} min
+                  </span>
+                  {Number(z.price_delta) !== 0 && (
+                    <span
+                      className={`text-xs font-bold ${
+                        Number(z.price_delta) > 0 ? 'text-gnl-300' : 'text-rose-400'
+                      }`}
+                    >
+                      {Number(z.price_delta) > 0 ? '▲' : '▼'}
+                      {Math.abs(Number(z.price_delta)).toFixed(1)}
+                    </span>
+                  )}
+                  <span className="w-12 text-right font-black tabular-nums">
+                    {formatirajTocke(z.points)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {krogNajboljsi.length > 0 && (
+            <p className="pt-1 text-right">
+              <Link
+                to="/rezultati"
+                className="text-sm text-slate-500 underline hover:text-gnl-300"
+              >
+                {krog?.number}. krog · rezultati tekem →
+              </Link>
+            </p>
+          )}
+        </div>
         {/* zvezde */}
         {zvezde.length > 0 && (
           <section className="space-y-3">
@@ -500,65 +557,6 @@ export default function Domov() {
 
       {/* klepet — anonimni prostor za pogovor */}
       <Klepet />
-
-      {/* najboljši v zadnjem krogu */}
-      {krogNajboljsi.length > 0 && (
-        <section className="space-y-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-xl font-bold">
-              Najboljši v zadnjem odigranem krogu
-            </h2>
-            <Link
-              to="/rezultati"
-              className="text-sm text-slate-500 underline hover:text-gnl-300"
-            >
-              {krog?.number}. krog · rezultati tekem →
-            </Link>
-          </div>
-          <ul className="space-y-2">
-            {krogNajboljsi.map((z, i) => (
-              <li
-                key={z.player_id}
-                className={`kartica kartica-hover flex items-center gap-2 p-3 sm:gap-3 ${
-                  i === 0 ? 'ring-1 ring-amber-300/40' : ''
-                }`}
-              >
-                <span className="w-6 text-center text-lg">
-                  {i === 0 ? '🏆' : i + 1}
-                </span>
-                <Grb
-                  ime={z.team_name}
-                  kratko={z.team_short}
-                  logo={z.team_logo}
-                  velikost={22}
-                />
-                <Link
-                  to={`/igralec/${z.player_id}`}
-                  className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
-                >
-                  {prikazniIme(z.full_name)}
-                </Link>
-                <span className="hidden text-xs text-slate-500 sm:inline">
-                  {z.minutes} min
-                </span>
-                {Number(z.price_delta) !== 0 && (
-                  <span
-                    className={`text-xs font-bold ${
-                      Number(z.price_delta) > 0 ? 'text-gnl-300' : 'text-rose-400'
-                    }`}
-                  >
-                    {Number(z.price_delta) > 0 ? '▲' : '▼'}
-                    {Math.abs(Number(z.price_delta)).toFixed(1)}
-                  </span>
-                )}
-                <span className="w-12 text-right font-black tabular-nums">
-                  {formatirajTocke(z.points)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       {/* naloge za skupnost — samo asistence, pozicij ne izpostavljamo, ker
           so postavljene iz statistike in jih glasovanje po potrebi popravi. */}
