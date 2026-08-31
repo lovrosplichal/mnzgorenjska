@@ -49,7 +49,7 @@ export default function Domov() {
                 .eq('season', data?.season ?? '')
                 .order('goals', { ascending: false })
                 .order('minutes', { ascending: false })
-                .limit(10),
+                .limit(5),
             ),
         ])
       setStat({
@@ -141,7 +141,7 @@ export default function Domov() {
           .eq('round_id', zadnji.id)
           .order('points', { ascending: false })
           .limit(50)
-        setKrogNajboljsi((najboljsi ?? []).slice(0, 10))
+        setKrogNajboljsi((najboljsi ?? []).slice(0, 5))
 
         // Idealna enajsterica: 1 GK + top 4 DEF + top 4 MID + top 2 FWD
         // po točkah v zadnjem odigranem krogu. Če je pozicij premalo,
