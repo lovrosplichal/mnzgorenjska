@@ -2,9 +2,10 @@
 import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { prikazniIme } from '../lib/pomozno'
+import { useAuth } from '../lib/useAuth'
 import Grb from '../components/Grb'
 import IgrisceTocke from '../components/IgrisceTocke'
+import GolZaGlasovanje, { caka } from '../components/GolZaGlasovanje'
 
 const datum = (d) =>
   d
@@ -17,9 +18,13 @@ const datum = (d) =>
 
 export default function Tekma() {
   const { id } = useParams()
+  const { session } = useAuth()
   const [tekma, setTekma] = useState(null)
   const [nastopi, setNastopi] = useState([])
   const [goli, setGoli] = useState([])
+  const [glasovi, setGlasovi] = useState({}) // goal_id -> [{player_id, votes}]
+  const [mojiGlasovi, setMojiGlasovi] = useState({}) // goal_id -> player_id
+  const [pravkarOddan, setPravkarOddan] = useState(null)
   const [nalaganje, setNalaganje] = useState(true)
   const [napaka, setNapaka] = useState(null)
 
@@ -54,7 +59,7 @@ export default function Tekma() {
         supabase
           .from('goals')
           .select(
-            'id, minute, is_own_goal, is_penalty, score_home, score_away, team_id, scorer:scorer_id(full_name), assist:assist_player_id(full_name)',
+            'id, minute, is_own_goal, is_penalty, score_home, score_away, team_id, scorer:scorer_id(id, full_name), assist_player_id, assist:assist_player_id(full_name)',
           )
           .eq('match_id', id)
           .order('minute'),
@@ -78,12 +83,80 @@ export default function Tekma() {
       )
       setGoli(g ?? [])
       setNalaganje(false)
+
+      // Glasovi o asistencah — na tej strani se da tudi glasovati.
+      const idji = (g ?? []).map((x) => x.id)
+      if (idji.length) osveziGlasove(idji)
     }
+    async function osveziGlasove(idji) {
+      const { data: st } = await supabase
+        .from('assist_vote_counts')
+        .select('goal_id, player_id, votes')
+        .in('goal_id', idji)
+      if (preklican) return
+      const skupine = {}
+      for (const x of st ?? []) (skupine[x.goal_id] ??= []).push(x)
+      for (const k of Object.keys(skupine))
+        skupine[k].sort((a, b) => b.votes - a.votes)
+      setGlasovi(skupine)
+
+      if (!session) return setMojiGlasovi({})
+      const { data: moji } = await supabase
+        .from('assist_votes')
+        .select('goal_id, player_id')
+        .in('goal_id', idji)
+        .eq('voter_id', session.user.id)
+      if (preklican) return
+      setMojiGlasovi(
+        Object.fromEntries((moji ?? []).map((m) => [m.goal_id, m.player_id])),
+      )
+    }
+
     nalozi()
     return () => {
       preklican = true
     }
-  }, [id])
+  }, [id, session])
+
+  async function glasuj(golId, playerId) {
+    if (!session) return
+    setNapaka(null)
+
+    const { error } = await supabase.from('assist_votes').upsert(
+      { goal_id: golId, voter_id: session.user.id, player_id: playerId },
+      { onConflict: 'goal_id,voter_id' },
+    )
+    if (error) return setNapaka(error.message)
+
+    setMojiGlasovi({ ...mojiGlasovi, [golId]: playerId })
+    setPravkarOddan(golId)
+    setTimeout(() => setPravkarOddan(null), 1200)
+
+    // Osveži števce in morebitno potrditev asistence (prag potrdi baza).
+    const [{ data: st }, { data: gg }] = await Promise.all([
+      supabase
+        .from('assist_vote_counts')
+        .select('goal_id, player_id, votes')
+        .eq('goal_id', golId),
+      supabase
+        .from('goals')
+        .select('id, assist_player_id, assist:assist_player_id(full_name)')
+        .eq('id', golId)
+        .single(),
+    ])
+    setGlasovi((prej) => ({
+      ...prej,
+      [golId]: (st ?? []).sort((a, b) => b.votes - a.votes),
+    }))
+    if (gg)
+      setGoli((prej) =>
+        prej.map((x) =>
+          x.id === golId
+            ? { ...x, assist_player_id: gg.assist_player_id, assist: gg.assist }
+            : x,
+        ),
+      )
+  }
 
   if (nalaganje)
     return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
@@ -97,6 +170,10 @@ export default function Tekma() {
         </Link>
       </div>
     )
+
+  // Koliko golov te tekme še čaka na odločitev skupnosti. Enajstmetrovke,
+  // avtogoli in goli, pri katerih je zmagalo »brez asistence«, ne čakajo.
+  const cakajocih = goli.filter((g) => caka(g, glasovi[g.id] ?? [])).length
 
   // Nastopi so v isti tabeli za obe ekipi; razdelimo jih po klubu.
   const domaci = nastopi.filter((n) => n.team_id === tekma.home_team_id)
@@ -160,55 +237,47 @@ export default function Tekma() {
         </>
       )}
 
-      {tekma.brez_asistence > 0 && (
-        <Link
-          to="/glasovanje"
-          className="block rounded-2xl bg-amber-400/10 p-4 text-sm text-amber-200 ring-1 ring-amber-400/30 transition hover:ring-amber-300/60"
-        >
-          🅰️ {tekma.brez_asistence}{' '}
-          {tekma.brez_asistence === 1 ? 'gol na tej tekmi še čaka' : 'golov na tej tekmi še čaka'}{' '}
-          na asistenco — dokler je ni, podajalec ostane brez +3 točk.{' '}
-          <strong>Glasuj →</strong>
-        </Link>
+      {cakajocih > 0 && (
+        <p className="rounded-2xl bg-amber-400/10 p-4 text-sm text-amber-200 ring-1 ring-amber-400/30">
+          🅰️ {cakajocih}{' '}
+          {cakajocih === 1 ? 'gol na tej tekmi čaka' : 'golov na tej tekmi čaka'} na
+          asistenco — dokler je ni, podajalec ostane brez +3 točk. Povej spodaj,
+          kdo je podal.
+        </p>
       )}
 
       {goli.length > 0 && (
-        <section className="space-y-2">
-          <h2 className="text-xl font-bold">Goli</h2>
-          <ul className="space-y-1.5">
-            {goli.map((g) => {
-              const doma = g.team_id === tekma.home_team_id
-              return (
-                <li key={g.id} className="kartica flex items-center gap-3 p-2.5 text-sm">
-                  <span className="w-10 shrink-0 rounded-lg bg-slate-950 py-1 text-center font-black tabular-nums text-gnl-300">
-                    {g.minute}&apos;
-                  </span>
-                  <Grb
-                    ime={doma ? tekma.home_name : tekma.away_name}
-                    kratko={doma ? tekma.home_short : tekma.away_short}
-                    logo={doma ? tekma.home_logo : tekma.away_logo}
-                    velikost={20}
-                  />
-                  <span className="min-w-0 flex-1 truncate">
-                    <strong>{prikazniIme(g.scorer?.full_name) || 'Neznan strelec'}</strong>
-                    {g.is_penalty && <span className="ml-1.5 text-amber-300">11m</span>}
-                    {g.is_own_goal && <span className="ml-1.5 text-rose-300">avtogol</span>}
-                    {g.assist?.full_name && (
-                      <span className="ml-1.5 text-slate-400">
-                        🅰️ {prikazniIme(g.assist.full_name)}
-                      </span>
-                    )}
-                  </span>
-                  <span className="shrink-0 tabular-nums text-slate-400">
-                    {g.score_home}:{g.score_away}
-                  </span>
-                </li>
-              )
-            })}
+        <section className="space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-bold">Goli in asistence</h2>
+            {!session && (
+              <Link to="/prijava" className="text-sm text-gnl-300 underline">
+                Prijavi se za glasovanje
+              </Link>
+            )}
+          </div>
+          <ul className="space-y-3">
+            {goli.map((g) => (
+              <GolZaGlasovanje
+                key={g.id}
+                gol={g}
+                tekma={tekma}
+                kandidati={nastopi.filter(
+                  (n) =>
+                    n.team_id === g.team_id &&
+                    n.player_id !== g.scorer?.id &&
+                    n.minutes_played > 0,
+                )}
+                glasovi={glasovi[g.id] ?? []}
+                mojGlas={mojiGlasovi[g.id]}
+                omogoceno={Boolean(session)}
+                pravkar={pravkarOddan === g.id}
+                onGlasuj={glasuj}
+              />
+            ))}
           </ul>
         </section>
       )}
-
       {napaka && <p className="text-sm text-rose-400">Napaka: {napaka}</p>}
     </div>
   )

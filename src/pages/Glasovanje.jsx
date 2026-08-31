@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
-import { prikazniIme, razredPozicije, KRATKA_POZICIJA } from '../lib/pomozno'
 import Grb from '../components/Grb'
+import GolZaGlasovanje, {
+  PRAG_ASISTENCE,
+  caka,
+} from '../components/GolZaGlasovanje'
 
-const PRAG = 3
 
 export default function Glasovanje() {
   const { session, loading } = useAuth()
@@ -189,7 +191,7 @@ export default function Glasovanje() {
   if (loading || nalaganje)
     return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
 
-  const nepotrjenih = goli.filter((g) => !g.assist_player_id && !g.is_own_goal).length
+  const nepotrjenih = goli.filter((g) => caka(g, glasovi[g.id] ?? [])).length
 
   return (
     <div className="space-y-6">
@@ -198,7 +200,7 @@ export default function Glasovanje() {
         <p className="max-w-2xl text-slate-400">
           Zapisniki MNZ Gorenjska beležijo strelce, asistenc pa ne. Določi jih
           skupnost: ko isti igralec pri golu zbere{' '}
-          <strong className="text-gnl-300">{PRAG} glasov</strong>, se mu
+          <strong className="text-gnl-300">{PRAG_ASISTENCE} glasov</strong>, se mu
           asistenca prizna in prinese <strong className="text-gnl-300">+3 točke</strong>.
         </p>
       </header>
@@ -365,7 +367,7 @@ export default function Glasovanje() {
 
           <ul className="space-y-4">
             {goli.map((g) => (
-              <GolKartica
+              <GolZaGlasovanje
                 key={g.id}
                 gol={g}
                 tekma={tekma}
@@ -388,196 +390,5 @@ export default function Glasovanje() {
 
       {napaka && <p className="text-sm text-rose-400">Napaka: {napaka}</p>}
     </div>
-  )
-}
-
-function GolKartica({
-  gol,
-  tekma,
-  kandidati,
-  glasovi,
-  mojGlas,
-  omogoceno,
-  pravkar,
-  onGlasuj,
-}) {
-  const [odprto, setOdprto] = useState(false)
-  const potrjeno = Boolean(gol.assist_player_id)
-  const stGlasov = Object.fromEntries(glasovi.map((v) => [v.player_id, v.votes]))
-  const vodilni = glasovi[0]
-
-  const domaci = gol.team_id === tekma?.home_team_id
-  const ekipa = {
-    name: domaci ? tekma?.home_name : tekma?.away_name,
-    short_name: domaci ? tekma?.home_short : tekma?.away_short,
-    logo_url: domaci ? tekma?.home_logo : tekma?.away_logo,
-  }
-
-  if (gol.is_own_goal)
-    return (
-      <li className="kartica p-4 opacity-60">
-        <div className="flex items-center gap-3">
-          <span className="w-12 shrink-0 text-center font-black tabular-nums text-slate-500">
-            {gol.minute}&apos;
-          </span>
-          <span className="text-slate-400">
-            Avtogol — {prikazniIme(gol.scorer?.full_name)}
-          </span>
-          <span className="znacka ml-auto bg-white/10 text-slate-400">
-            brez asistence
-          </span>
-        </div>
-      </li>
-    )
-
-  return (
-    <li className={`kartica overflow-hidden ${pravkar ? 'animiraj-pulz' : ''}`}>
-      <div className="flex flex-wrap items-center gap-3 p-4">
-        <span className="w-12 shrink-0 rounded-lg bg-slate-950 py-1 text-center font-black tabular-nums text-gnl-300">
-          {gol.minute}&apos;
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg">⚽</span>
-            <strong className="truncate">{prikazniIme(gol.scorer?.full_name)}</strong>
-            {gol.is_penalty && (
-              <span className="znacka bg-amber-400/20 text-amber-200">11m</span>
-            )}
-          </div>
-          <div className="text-xs text-slate-500">
-            {ekipa?.name} · {gol.score_home}:{gol.score_away}
-          </div>
-        </div>
-
-        {potrjeno ? (
-          <div className="flex items-center gap-2 rounded-xl bg-gnl-500/15 px-3 py-2 ring-1 ring-gnl-400/30">
-            <span>🅰️</span>
-            <div className="text-sm">
-              <div className="font-bold text-gnl-200">
-                {prikazniIme(gol.assist?.full_name)}
-              </div>
-              <div className="text-xs text-gnl-400/80">asistenca potrjena</div>
-            </div>
-          </div>
-        ) : (
-          <button
-            onClick={() => setOdprto(!odprto)}
-            disabled={!omogoceno}
-            className={odprto ? 'gumb-tih' : 'gumb-glavni'}
-          >
-            {odprto ? 'Zapri' : mojGlas ? 'Spremeni glas' : 'Kdo je podal?'}
-          </button>
-        )}
-      </div>
-
-      {/* napredek do praga — VIDNO tudi pod pragom, da uporabnik ve, koliko
-          glasov je in kdo vodi */}
-      {!potrjeno && vodilni && (
-        <div className="space-y-2 border-t border-white/5 bg-slate-950/30 px-4 pb-3 pt-3">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <div className="text-sm">
-              {vodilni.player_id == null ? (
-                <>
-                  <strong className="text-slate-200">Vodi »brez asistence«</strong>
-                  <span className="ml-2 text-xs text-slate-500">
-                    (asistenca ostane brez)
-                  </span>
-                </>
-              ) : (
-                <>
-                  Vodi{' '}
-                  <strong className="text-gnl-200">
-                    {prikazniIme(
-                      kandidati.find((k) => k.player_id === vodilni.player_id)
-                        ?.players?.full_name,
-                    ) || 'igralec brez zapisa'}
-                  </strong>
-                </>
-              )}
-            </div>
-            <span className="tabular-nums text-sm font-black text-gnl-300">
-              {vodilni.votes} / {PRAG}{' '}
-              <span className="text-xs font-normal text-slate-500">
-                {vodilni.votes >= PRAG
-                  ? 'potrjeno'
-                  : `— še ${PRAG - vodilni.votes} do potrditve`}
-              </span>
-            </span>
-          </div>
-          <div className="h-2 overflow-hidden rounded-full bg-white/10">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-gnl-500 to-gnl-300 transition-all duration-300"
-              style={{ width: `${Math.min(100, (vodilni.votes / PRAG) * 100)}%` }}
-            />
-          </div>
-          {/* Ostali kandidati z glasovi */}
-          {glasovi.length > 1 && (
-            <div className="text-xs text-slate-500">
-              Ostali: {glasovi
-                .slice(1)
-                .map((g) =>
-                  g.player_id == null
-                    ? `brez (${g.votes})`
-                    : `${prikazniIme(kandidati.find((k) => k.player_id === g.player_id)?.players?.full_name) || '?'} (${g.votes})`,
-                )
-                .join(' · ')}
-            </div>
-          )}
-        </div>
-      )}
-
-      {odprto && !potrjeno && (
-        <div className="animiraj-vstop border-t border-white/10 bg-slate-950/40 p-4">
-          <p className="mb-3 text-xs uppercase tracking-wide text-slate-400">
-            Izberi podajalca — {ekipa?.name}
-          </p>
-          <div className="grid gap-2 sm:grid-cols-2">
-            {kandidati.map((k) => {
-              const izbran = mojGlas === k.player_id
-              const n = stGlasov[k.player_id] ?? 0
-              return (
-                <button
-                  key={k.player_id}
-                  onClick={() => onGlasuj(gol.id, k.player_id)}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-left text-sm transition ${
-                    izbran
-                      ? 'bg-gnl-500/25 ring-2 ring-gnl-400'
-                      : 'bg-white/5 hover:bg-white/10'
-                  }`}
-                >
-                  <span
-                    className={`znacka ${razredPozicije(k.players?.position)}`}
-                  >
-                    {KRATKA_POZICIJA[k.players?.position] ?? '?'}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate">
-                    {prikazniIme(k.players?.full_name)}
-                  </span>
-                  {n > 0 && (
-                    <span className="tabular-nums text-xs text-slate-400">
-                      {n}
-                    </span>
-                  )}
-                  {izbran && <span className="text-gnl-300">✓</span>}
-                </button>
-              )
-            })}
-          </div>
-
-          <button
-            onClick={() => onGlasuj(gol.id, null)}
-            // mojGlas je null, če je uporabnik glasoval za "nihče",
-            // in undefined, če še ni glasoval
-            className={`mt-3 w-full rounded-xl px-3 py-2 text-sm transition ${
-              mojGlas === null
-                ? 'bg-white/15 ring-1 ring-white/30'
-                : 'bg-white/5 hover:bg-white/10'
-            }`}
-          >
-            Nihče — gol brez asistence
-          </button>
-        </div>
-      )}
-    </li>
   )
 }
