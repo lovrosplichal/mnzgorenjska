@@ -25,6 +25,8 @@ export default function Administracija() {
   const [urediEkipa, setUrediEkipa] = useState(null) // { id, name }
   const [urediUporabnik, setUrediUporabnik] = useState(null) // { user_id, display_name }
   const [kopirano, setKopirano] = useState(false)
+  const [posiljam, setPosiljam] = useState(false)
+  const [logMailov, setLogMailov] = useState([])
 
   useEffect(() => {
     if (loading || !tekmovanjeId) return
@@ -98,6 +100,55 @@ export default function Administracija() {
     })
     if (error) return setNapaka(error.message)
     setUporabniki(data ?? [])
+    const { data: log } = await supabase
+      .from('email_log')
+      .select('id, email, vrsta, poslano_at, napaka')
+      .eq('competition_id', tekmovanjeId)
+      .order('poslano_at', { ascending: false })
+      .limit(20)
+    setLogMailov(log ?? [])
+  }
+
+  async function posljiOpomnike(potrjeno) {
+    if (!potrjeno) return
+    setNapaka(null)
+    setPosiljam(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('posli-opomnik', {
+        body: { competition_id: tekmovanjeId },
+      })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      const posl = data?.poslano ?? 0
+      const presk = data?.preskoceno ?? 0
+      setSporocilo(
+        `Poslano ${posl}, preskočeno ${presk} (že prejel opomnik v zadnjih 3 dneh ali napaka).`,
+      )
+      await naloziUporabnike()
+    } catch (e) {
+      setNapaka(`Pošiljanje ni uspelo: ${e.message ?? e}`)
+    } finally {
+      setPosiljam(false)
+    }
+  }
+
+  async function posljiTestniMail(naslov) {
+    setNapaka(null)
+    setPosiljam(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('posli-opomnik', {
+        body: { competition_id: tekmovanjeId, test_email: naslov },
+      })
+      if (error) throw error
+      if (data?.error) throw new Error(data.error)
+      const r = data?.resend
+      if (r?.napaka) throw new Error(r.napaka)
+      setSporocilo(`Test mail poslan na ${naslov}. Resend ID: ${r?.id ?? '—'}`)
+    } catch (e) {
+      setNapaka(`Test ni uspel: ${e.message ?? e}`)
+    } finally {
+      setPosiljam(false)
+    }
   }
 
   async function preimenujEkipo(id, novo) {
@@ -353,6 +404,35 @@ export default function Administracija() {
             <>
               <div className="flex flex-wrap gap-2">
                 <button
+                  onClick={() => {
+                    const st = uporabniki.filter(
+                      (u) => !u.ekipa_veljavna && u.email,
+                    ).length
+                    posljiOpomnike(
+                      window.confirm(
+                        `Poslati opomnik ${st} uporabnikom brez veljavne ekipe?\n\nTisti, ki so opomnik dobili v zadnjih 3 dneh, bodo preskočeni.`,
+                      ),
+                    )
+                  }}
+                  disabled={posiljam}
+                  className="gumb-glavni text-xs disabled:opacity-50"
+                >
+                  {posiljam ? 'Pošiljam …' : '📨 Pošlji opomnike'}
+                </button>
+                <button
+                  onClick={() => {
+                    const naslov = window.prompt(
+                      'Testni mail na naslov (predlagam tvoj svoj):',
+                      session?.user?.email ?? '',
+                    )
+                    if (naslov) posljiTestniMail(naslov)
+                  }}
+                  disabled={posiljam}
+                  className="gumb-tih text-xs disabled:opacity-50"
+                >
+                  🧪 Testni mail
+                </button>
+                <button
                   onClick={() =>
                     kopirajEmaile(
                       uporabniki.filter((u) => !u.ekipa_veljavna && u.email),
@@ -360,15 +440,15 @@ export default function Administracija() {
                   }
                   className="gumb-tih text-xs"
                 >
-                  {kopirano ? '✓ kopirano' : 'Kopiraj e-pošte nepopolnih'}
+                  {kopirano ? '✓ kopirano' : 'Kopiraj e-pošte'}
                 </button>
                 <a
                   href={mailtoNepopolnim(
                     uporabniki.filter((u) => !u.ekipa_veljavna && u.email),
                   )}
-                  className="gumb-glavni text-xs"
+                  className="gumb-tih text-xs"
                 >
-                  ✉️ Odpri e-pošto (BCC)
+                  ✉️ Mailto (BCC)
                 </a>
                 <button onClick={naloziUporabnike} className="text-xs text-slate-400 underline hover:text-gnl-300">
                   osveži
@@ -490,6 +570,39 @@ export default function Administracija() {
             </>
           )
         })()}
+
+        {logMailov.length > 0 && (
+          <details className="mt-2 rounded-xl bg-white/5 p-3 text-xs">
+            <summary className="cursor-pointer font-semibold text-slate-300">
+              Zgodovina poslanih opomnikov (zadnjih {logMailov.length})
+            </summary>
+            <ul className="mt-2 space-y-1">
+              {logMailov.map((l) => (
+                <li key={l.id} className="flex items-center justify-between gap-2">
+                  <span className={l.napaka ? 'text-rose-300' : 'text-slate-300'}>
+                    {l.napaka ? '✗' : '✓'} {l.email}
+                  </span>
+                  <span className="text-slate-500">
+                    {new Date(l.poslano_at).toLocaleString('sl-SI', {
+                      day: 'numeric',
+                      month: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                    {l.napaka && (
+                      <span
+                        title={l.napaka}
+                        className="ml-2 text-rose-300"
+                      >
+                        napaka
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </section>
 
       {/* Fantasy ekipe — vrednost, cash, veljavnost rosterja */}
