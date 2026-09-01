@@ -956,7 +956,7 @@ export default function MojaEkipa() {
             )}
 
           {/* status ekipe in shranjevanje */}
-          <section className="kartica p-3 sm:p-4">
+          <section id="status-ekipe" className="kartica p-3 sm:p-4">
             {(() => {
               const brezImena = !imeEkipe.trim()
               const pripravljena = !brezImena && napakeEkipe.length === 0
@@ -1061,33 +1061,52 @@ export default function MojaEkipa() {
                 Pripomoček Klop+
               </h3>
               {krogPripomocka ? (
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm text-gnl-300">
-                      Vložen za {krogPripomocka.number}. krog — v njem štejejo
-                      tudi točke klopi.
-                    </p>
-                    {krogPripomocka.deadline_at &&
-                    new Date(krogPripomocka.deadline_at) > new Date() ? (
-                      <button
-                        onClick={() => prekliciPripomocek('klop_plus')}
-                        className="text-xs text-slate-400 underline hover:text-rose-400"
-                      >
-                        prekliči
-                      </button>
-                    ) : (
-                      <span className="znacka bg-white/10 text-[10px] text-slate-400">
-                        🔒 zaklenjen
-                      </span>
-                    )}
-                  </div>
-                  {krogPripomocka.deadline_at &&
-                    new Date(krogPripomocka.deadline_at) > new Date() && (
-                      <p className="text-[11px] text-slate-500">
-                        Prekliči lahko do <Odstevanje do={krogPripomocka.deadline_at} />
-                      </p>
-                    )}
-                </div>
+                (() => {
+                  // Zaklenjen je samo, ce rok obstaja IN je ze potekel.
+                  // Prihodnji krog brez razporeda (deadline_at je null)
+                  // dopusca preklic — sicer bi napacen klik za zafiksiral
+                  // pripomocek za cel mesec.
+                  const zaklenjen =
+                    krogPripomocka.deadline_at &&
+                    new Date(krogPripomocka.deadline_at) <= new Date()
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm text-gnl-300">
+                          Vložen za {krogPripomocka.number}. krog — v njem
+                          štejejo tudi točke klopi.
+                        </p>
+                        {zaklenjen ? (
+                          <span className="znacka bg-white/10 text-[10px] text-slate-400">
+                            🔒 zaklenjen
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => prekliciPripomocek('klop_plus')}
+                            className="text-xs text-slate-400 underline hover:text-rose-400"
+                          >
+                            prekliči
+                          </button>
+                        )}
+                      </div>
+                      {!zaklenjen && (
+                        <p className="text-[11px] text-slate-500">
+                          {krogPripomocka.deadline_at ? (
+                            <>
+                              Prekliči lahko do{' '}
+                              <Odstevanje do={krogPripomocka.deadline_at} />
+                            </>
+                          ) : (
+                            <>
+                              Rok kroga še ni objavljen — dokler traja, lahko
+                              prosto premakneš na drug krog.
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()
               ) : (
                 <div className="flex flex-wrap gap-2">
                   <select
@@ -1119,33 +1138,48 @@ export default function MojaEkipa() {
                 Pripomoček Wildcard
               </h3>
               {krogWildcard ? (
-                <div className="space-y-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-sm text-gnl-300">
-                      Vložen za {krogWildcard.number}. krog — prestopi v njem so
-                      brezplačni.
-                    </p>
-                    {krogWildcard.deadline_at &&
-                    new Date(krogWildcard.deadline_at) > new Date() ? (
-                      <button
-                        onClick={() => prekliciPripomocek('wildcard')}
-                        className="text-xs text-slate-400 underline hover:text-rose-400"
-                      >
-                        prekliči
-                      </button>
-                    ) : (
-                      <span className="znacka bg-white/10 text-[10px] text-slate-400">
-                        🔒 zaklenjen
-                      </span>
-                    )}
-                  </div>
-                  {krogWildcard.deadline_at &&
-                    new Date(krogWildcard.deadline_at) > new Date() && (
-                      <p className="text-[11px] text-slate-500">
-                        Prekliči lahko do <Odstevanje do={krogWildcard.deadline_at} />
-                      </p>
-                    )}
-                </div>
+                (() => {
+                  const zaklenjen =
+                    krogWildcard.deadline_at &&
+                    new Date(krogWildcard.deadline_at) <= new Date()
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm text-gnl-300">
+                          Vložen za {krogWildcard.number}. krog — prestopi v
+                          njem so brezplačni.
+                        </p>
+                        {zaklenjen ? (
+                          <span className="znacka bg-white/10 text-[10px] text-slate-400">
+                            🔒 zaklenjen
+                          </span>
+                        ) : (
+                          <button
+                            onClick={() => prekliciPripomocek('wildcard')}
+                            className="text-xs text-slate-400 underline hover:text-rose-400"
+                          >
+                            prekliči
+                          </button>
+                        )}
+                      </div>
+                      {!zaklenjen && (
+                        <p className="text-[11px] text-slate-500">
+                          {krogWildcard.deadline_at ? (
+                            <>
+                              Prekliči lahko do{' '}
+                              <Odstevanje do={krogWildcard.deadline_at} />
+                            </>
+                          ) : (
+                            <>
+                              Rok kroga še ni objavljen — dokler traja, lahko
+                              prosto premakneš na drug krog.
+                            </>
+                          )}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })()
               ) : (
                 <button
                   onClick={() =>
@@ -1242,14 +1276,17 @@ export default function MojaEkipa() {
             className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm"
           />
           <div className="fixed inset-x-0 bottom-0 z-40 flex max-h-[92dvh] flex-col rounded-t-2xl border-t border-white/15 bg-slate-950 shadow-2xl">
-            <div className="relative shrink-0 border-b border-white/10 px-3 pb-2 pt-2">
-              <span className="mx-auto block h-1 w-10 rounded-full bg-white/20" />
-              <button
-                onClick={() => setOdprtTrg(false)}
-                className="absolute right-2 top-1 rounded-lg px-2 py-1 text-sm text-slate-300 hover:bg-white/5"
-              >
-                Zapri ✕
-              </button>
+            <div className="shrink-0 border-b border-white/10 px-3 pb-2 pt-2">
+              <div className="flex items-center gap-2">
+                <span className="h-1 w-10 rounded-full bg-white/30" aria-hidden />
+                <button
+                  onClick={() => setOdprtTrg(false)}
+                  aria-label="Zapri trg"
+                  className="ml-auto rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/15"
+                >
+                  ✕ Zapri
+                </button>
+              </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
               <TrgIgralcev
@@ -1275,11 +1312,35 @@ export default function MojaEkipa() {
 
       {/* Na telefonu sta glavni dejanji vedno pri roki v enem tanjsem pasu —
           prej sta dve vrstici cez ~100 px vzeli prevec ekrana. Cena in
-          napredek sta zdaj strnjena v levo, gumba desno. */}
+          napredek sta zdaj strnjena v levo, gumba desno. Ce je z ekipo
+          kaj narobe, zgoraj v pasu izpisemo prvo napako, da uporabnik
+          vidi razlog, zakaj ne dobi tock v naslednjem krogu. */}
       <div
         className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-slate-950/95 backdrop-blur lg:hidden"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
+        {izbrani.length > 0 && napakeEkipe.length > 0 && (
+          <button
+            onClick={() =>
+              document
+                .getElementById('status-ekipe')
+                ?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+            }
+            className="flex w-full items-center gap-2 border-b border-rose-400/40 bg-rose-500/15 px-3 py-1.5 text-left text-[11px] text-rose-100 hover:bg-rose-500/25"
+          >
+            <span className="shrink-0 text-sm">⚠</span>
+            <span className="min-w-0 flex-1 truncate">
+              {napakeEkipe[0]}
+              {napakeEkipe.length > 1 && (
+                <span className="text-rose-200/80">
+                  {' '}
+                  · +{napakeEkipe.length - 1}
+                </span>
+              )}
+            </span>
+            <span className="shrink-0 text-rose-200/70">popravi ↑</span>
+          </button>
+        )}
         <div className="flex items-center gap-2 px-3 py-2">
           <div className="min-w-0 flex-1 tabular-nums">
             <div className="text-sm font-black leading-tight">
