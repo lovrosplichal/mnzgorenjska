@@ -631,7 +631,7 @@ export default function MojaEkipa() {
   )
 
   return (
-    <div className="space-y-4 pb-24 sm:space-y-6 lg:pb-0">
+    <div className="space-y-4 pb-20 sm:space-y-6 lg:pb-0">
       {/* Toast za potrditev shranjevanja — plava vidno pod navbarjem, da
           uporabnik po pritisku "Shrani ekipo" ne dvomi, ali se je shranilo. */}
       {sporocilo && (
@@ -1273,36 +1273,43 @@ export default function MojaEkipa() {
         </div>
       )}
 
-      {/* na telefonu sta glavni dejanji vedno pri roki */}
-      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-slate-950/95 backdrop-blur lg:hidden">
-        <div className="flex items-center justify-between gap-3 px-3 pt-2 text-xs tabular-nums">
-          <span className="text-slate-400">
-            Ostane{' '}
-            <strong
-              className={`text-sm ${
-                preostalo < 0 ? 'text-rose-400' : 'text-gnl-300'
-              }`}
-            >
-              {formatirajCeno(preostalo)}
-            </strong>
-          </span>
-          <span className="text-slate-500">
-            {izbrani.length}/{VELIKOST_EKIPE} · postava {prvi.length}/
-            {STEVILO_PRVIH}
-          </span>
-        </div>
-        <div className="flex gap-2 p-3 pt-2">
+      {/* Na telefonu sta glavni dejanji vedno pri roki v enem tanjsem pasu —
+          prej sta dve vrstici cez ~100 px vzeli prevec ekrana. Cena in
+          napredek sta zdaj strnjena v levo, gumba desno. */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-20 border-t border-white/10 bg-slate-950/95 backdrop-blur lg:hidden"
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+      >
+        <div className="flex items-center gap-2 px-3 py-2">
+          <div className="min-w-0 flex-1 tabular-nums">
+            <div className="text-sm font-black leading-tight">
+              <span
+                className={preostalo < 0 ? 'text-rose-400' : 'text-gnl-300'}
+              >
+                {formatirajCeno(preostalo)}
+              </span>
+              <span className="ml-1 text-[10px] font-normal text-slate-500">
+                ostane
+              </span>
+            </div>
+            <div className="text-[10px] leading-tight text-slate-500">
+              {izbrani.length}/{VELIKOST_EKIPE} · {prvi.length}/{STEVILO_PRVIH}
+            </div>
+          </div>
           <button
             onClick={() => {
               setFilterPoz('vse')
               setOdprtTrg(true)
             }}
-            className="gumb-tih flex-1"
+            className="gumb-tih shrink-0 px-3 py-2 text-xs"
           >
-            ＋ Dodaj igralca
+            ＋ Dodaj
           </button>
-          <button onClick={poskusiShraniti} className="gumb-glavni flex-1">
-            {!imeEkipe.trim() || napakeEkipe.length ? 'Shrani osnutek' : 'Shrani'}
+          <button
+            onClick={poskusiShraniti}
+            className="gumb-glavni shrink-0 px-3 py-2 text-xs"
+          >
+            {!imeEkipe.trim() || napakeEkipe.length ? 'Osnutek' : 'Shrani'}
           </button>
         </div>
       </div>

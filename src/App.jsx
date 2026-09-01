@@ -21,7 +21,7 @@ export default function App() {
   return (
     <AuthProvider>
       <TekmovanjeProvider>
-        <div className="min-h-screen">
+        <div className="min-h-screen overflow-x-hidden">
           <Navbar />
           <OpozoriloEkipe />
           <main className="mx-auto max-w-5xl px-4 py-8">
