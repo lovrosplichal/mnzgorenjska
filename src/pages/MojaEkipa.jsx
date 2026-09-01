@@ -58,6 +58,14 @@ export default function MojaEkipa() {
   const [odprtTrg, setOdprtTrg] = useState(false)
   const imeRef = useRef(null)
 
+  // Sporocilo o uspehu shrani samo za nekaj sekund — kot toast. Napake pustimo,
+  // dokler jih uporabnik ne odpravi.
+  useEffect(() => {
+    if (!sporocilo) return
+    const t = setTimeout(() => setSporocilo(null), 4000)
+    return () => clearTimeout(t)
+  }, [sporocilo])
+
   useEffect(() => {
     if (loading || !tekmovanjeId) return
     if (!session) {
@@ -624,6 +632,40 @@ export default function MojaEkipa() {
 
   return (
     <div className="space-y-4 pb-24 sm:space-y-6 lg:pb-0">
+      {/* Toast za potrditev shranjevanja — plava vidno pod navbarjem, da
+          uporabnik po pritisku "Shrani ekipo" ne dvomi, ali se je shranilo. */}
+      {sporocilo && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="fixed inset-x-0 top-3 z-[60] mx-auto flex max-w-md items-center justify-between gap-3 rounded-2xl border border-gnl-400/40 bg-gnl-500/95 px-4 py-3 text-sm font-semibold text-slate-950 shadow-2xl shadow-black/50 backdrop-blur"
+        >
+          <span className="min-w-0 flex-1">{sporocilo}</span>
+          <button
+            onClick={() => setSporocilo(null)}
+            aria-label="Zapri obvestilo"
+            className="shrink-0 rounded-lg px-2 py-0.5 text-slate-950/70 hover:bg-black/10"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      {napaka && (
+        <div
+          role="alert"
+          className="fixed inset-x-0 top-3 z-[60] mx-auto flex max-w-md items-center justify-between gap-3 rounded-2xl border border-rose-400/60 bg-rose-500/95 px-4 py-3 text-sm font-semibold text-white shadow-2xl shadow-black/50 backdrop-blur"
+        >
+          <span className="min-w-0 flex-1">⚠ {napaka}</span>
+          <button
+            onClick={() => setNapaka(null)}
+            aria-label="Zapri opozorilo"
+            className="shrink-0 rounded-lg px-2 py-0.5 text-white/80 hover:bg-black/10"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       <h1 className="text-2xl font-black naslov sm:text-3xl">
         Moja ekipa
         {tekmovanje && (
@@ -719,9 +761,11 @@ export default function MojaEkipa() {
         </div>
       )}
 
-      {/* Sticky povzetek — proračun, napredek in shrani so vedno pri roki. */}
-      <div className="kartica sticky top-0 z-30 space-y-3 p-3 shadow-lg shadow-black/30 backdrop-blur sm:top-2 sm:p-4">
-        <div className="grid grid-cols-[1fr_auto] items-start gap-3">
+      {/* Povzetek — na desktopu sticky pri vrhu, na mobilnem samo naslovni pas.
+          Mobilni ima že fiksno spodnjo vrstico s proračunom in shrani gumbom,
+          zato tu ne rabi ponovno velike sticky kartice. */}
+      <div className="kartica space-y-3 p-3 sm:sticky sm:top-2 sm:z-30 sm:p-4 sm:shadow-lg sm:shadow-black/30 sm:backdrop-blur">
+        <div className="hidden sm:grid sm:grid-cols-[1fr_auto] sm:items-start sm:gap-3">
           <div>
             <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
               Na voljo še
@@ -755,7 +799,7 @@ export default function MojaEkipa() {
           </button>
         </div>
 
-        <div>
+        <div className="hidden sm:block">
           <div className="h-2 overflow-hidden rounded-full bg-white/10">
             <div
               className={`h-full rounded-full transition-all duration-300 ${
@@ -1197,17 +1241,34 @@ export default function MojaEkipa() {
             onClick={() => setOdprtTrg(false)}
             className="fixed inset-0 z-30 bg-slate-950/70 backdrop-blur-sm"
           />
-          <div className="fixed inset-x-0 bottom-0 z-40 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-white/15 bg-slate-950 p-3 shadow-2xl">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <span className="mx-auto h-1 w-10 rounded-full bg-white/20" />
+          <div className="fixed inset-x-0 bottom-0 z-40 flex max-h-[92dvh] flex-col rounded-t-2xl border-t border-white/15 bg-slate-950 shadow-2xl">
+            <div className="relative shrink-0 border-b border-white/10 px-3 pb-2 pt-2">
+              <span className="mx-auto block h-1 w-10 rounded-full bg-white/20" />
               <button
                 onClick={() => setOdprtTrg(false)}
-                className="absolute right-3 top-3 text-sm text-slate-400"
+                className="absolute right-2 top-1 rounded-lg px-2 py-1 text-sm text-slate-300 hover:bg-white/5"
               >
                 Zapri ✕
               </button>
             </div>
-            {trg}
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-4">
+              <TrgIgralcev
+                vidni={vidni}
+                izbrani={izbrani}
+                izbraniPodrobno={izbraniPodrobno}
+                preostalo={preostalo}
+                vKadru={vKadru}
+                klubi={klubi}
+                iskanje={iskanje}
+                setIskanje={setIskanje}
+                filterKlub={filterKlub}
+                setFilterKlub={setFilterKlub}
+                filterPoz={filterPoz}
+                setFilterPoz={setFilterPoz}
+                naPreklop={preklopi}
+                mobilno
+              />
+            </div>
           </div>
         </div>
       )}
@@ -1263,58 +1324,89 @@ function TrgIgralcev({
   filterPoz,
   setFilterPoz,
   naPreklop,
+  mobilno = false,
 }) {
+  const iskanjeRef = useRef(null)
+  useEffect(() => {
+    // Na mobilnem uporabnik odpre predal, ker točno ve, koga išče —
+    // tipkovnica naj bo pripravljena. Na desktopu tega ne rabimo.
+    if (mobilno && iskanjeRef.current) {
+      const t = setTimeout(() => iskanjeRef.current?.focus(), 60)
+      return () => clearTimeout(t)
+    }
+  }, [mobilno])
   return (
     <section className="space-y-3">
-      <div className="flex items-baseline justify-between gap-2">
-        <h2 className="text-lg font-bold sm:text-xl">
-          {filterPoz === 'vse' ? 'Trg igralcev' : POZICIJE[filterPoz].naslov}
-        </h2>
-        <span className="text-xs text-slate-500">{vidni.length} igralcev</span>
-      </div>
-      <p className="text-xs text-slate-500">
-        Goli in minute so iz zadnje odigrane sezone — iz nje izhajajo tudi cene.
-      </p>
+      {/* Iskanje in filtri so sticky, da ne izginejo, ko listaš seznam.
+          Na mobilnem je to ključno — brskaš po 60 igralcih z eno roko. */}
+      <div className="sticky top-0 z-10 -mx-3 space-y-2 border-b border-white/5 bg-slate-950/95 px-3 pb-2 pt-2 backdrop-blur sm:mx-0 sm:border-0 sm:bg-transparent sm:px-0 sm:pt-0">
+        <div className="flex items-baseline justify-between gap-2">
+          <h2 className="text-base font-bold sm:text-xl">
+            {filterPoz === 'vse' ? 'Trg igralcev' : POZICIJE[filterPoz].naslov}
+          </h2>
+          <span className="text-xs text-slate-500">{vidni.length} igralcev</span>
+        </div>
 
-      {/* hitri preklop po pozicijah — pove tudi, koliko jih še manjka */}
-      <div className="flex flex-wrap gap-1">
-        <button
-          onClick={() => setFilterPoz('vse')}
-          className={`znacka transition ${
-            filterPoz === 'vse'
-              ? 'bg-white/15 text-white'
-              : 'bg-white/5 text-slate-400'
-          }`}
-        >
-          vsi
-        </button>
-        {VRSTNI_RED.map((koda) => (
+        <div className="relative">
+          <input
+            ref={iskanjeRef}
+            value={iskanje}
+            onChange={(e) => setIskanje(e.target.value)}
+            placeholder="Išči po imenu …"
+            type="search"
+            inputMode="search"
+            enterKeyHint="search"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2.5 pr-9 text-base sm:text-sm"
+          />
+          {iskanje && (
+            <button
+              onClick={() => {
+                setIskanje('')
+                iskanjeRef.current?.focus()
+              }}
+              aria-label="Počisti iskanje"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full px-2 py-1 text-slate-400 hover:bg-white/5"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+
+        <div className="flex gap-2">
           <button
-            key={koda}
-            onClick={() => setFilterPoz(koda)}
-            title={POZICIJE[koda].naslov}
-            className={`znacka transition ${
-              filterPoz === koda
-                ? razredPozicije(koda)
+            onClick={() => setFilterPoz('vse')}
+            className={`znacka whitespace-nowrap px-2 py-1 transition ${
+              filterPoz === 'vse'
+                ? 'bg-white/15 text-white'
                 : 'bg-white/5 text-slate-400'
-            } ${vKadru[koda] >= POZICIJE[koda].kader ? 'opacity-50' : ''}`}
+            }`}
           >
-            {KRATKA_POZICIJA[koda]} {vKadru[koda]}/{POZICIJE[koda].kader}
+            vsi
           </button>
-        ))}
-      </div>
+          {VRSTNI_RED.map((koda) => (
+            <button
+              key={koda}
+              onClick={() => setFilterPoz(koda)}
+              title={POZICIJE[koda].naslov}
+              className={`znacka whitespace-nowrap px-2 py-1 transition ${
+                filterPoz === koda
+                  ? razredPozicije(koda)
+                  : 'bg-white/5 text-slate-400'
+              } ${vKadru[koda] >= POZICIJE[koda].kader ? 'opacity-50' : ''}`}
+            >
+              {KRATKA_POZICIJA[koda]} {vKadru[koda]}/{POZICIJE[koda].kader}
+            </button>
+          ))}
+        </div>
 
-      <div className="flex flex-wrap gap-2">
-        <input
-          value={iskanje}
-          onChange={(e) => setIskanje(e.target.value)}
-          placeholder="Išči po imenu …"
-          className="min-w-32 flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
-        />
         <select
           value={filterKlub}
           onChange={(e) => setFilterKlub(e.target.value)}
-          className="min-w-0 flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
         >
           <option value="vsi">Vsi klubi</option>
           {klubi.map(([id, ime]) => (
@@ -1331,52 +1423,54 @@ function TrgIgralcev({
           const razlog = jeIzbran
             ? null
             : zakajNeGre(i, izbraniPodrobno, preostalo)
+          const statLetos =
+            i.minutes > 0
+              ? `${i.goals} G · ${i.minutes} min`
+              : i.goli_lani > 0
+                ? `lani ${i.goli_lani} G`
+                : 'brez nastopov'
           return (
             <li
               key={i.id}
-              className={`kartica flex flex-col gap-1 p-2 ${
+              className={`kartica p-2 ${
                 jeIzbran ? 'ring-1 ring-gnl-400/40' : ''
-              } ${razlog ? 'opacity-60' : ''}`}
+              } ${razlog ? 'opacity-70' : ''}`}
             >
               <div className="flex items-center gap-2">
-              <Grb
-                ime={i.team_name}
-                kratko={i.team_short}
-                logo={i.team_logo}
-                velikost={22}
-              />
-              <span className={`znacka ${razredPozicije(i.position)}`}>
-                {KRATKA_POZICIJA[i.position] ?? '?'}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-semibold">
-                  {prikazniIme(i.full_name)}
+                <Grb
+                  ime={i.team_name}
+                  kratko={i.team_short}
+                  logo={i.team_logo}
+                  velikost={22}
+                />
+                <span className={`znacka shrink-0 ${razredPozicije(i.position)}`}>
+                  {KRATKA_POZICIJA[i.position] ?? '?'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-semibold">
+                    {prikazniIme(i.full_name)}
+                  </div>
+                  <div className="truncate text-[11px] text-slate-500">
+                    {i.team_short} · {statLetos}
+                  </div>
                 </div>
-                <div className="truncate text-xs text-slate-500">
-                  {i.team_short} · {i.goals} golov · {i.minutes} min
-                  {!i.minutes && i.goli_lani > 0 && (
-                    <span className="text-slate-600">
-                      {' '}
-                      · lani {i.goli_lani} golov
-                    </span>
-                  )}
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-sm font-black tabular-nums text-gnl-300">
+                    {formatirajCeno(i.value)}
+                  </span>
+                  <button
+                    onClick={() => naPreklop(i)}
+                    title={razlog ?? undefined}
+                    className={`${
+                      jeIzbran ? 'gumb-tih' : 'gumb-glavni'
+                    } px-3 py-1 text-sm`}
+                  >
+                    {jeIzbran ? '✕ odstrani' : '⊕ dodaj'}
+                  </button>
                 </div>
-              </div>
-              <span className="w-16 text-right text-sm font-black tabular-nums text-gnl-300">
-                {formatirajCeno(i.value)}
-              </span>
-              <button
-                onClick={() => naPreklop(i)}
-                title={razlog ?? undefined}
-                className={`${
-                  jeIzbran ? 'gumb-tih' : 'gumb-glavni'
-                } px-3 py-1.5 text-sm`}
-              >
-                {jeIzbran ? '✕' : '⊕'}
-              </button>
               </div>
               {razlog && (
-                <p className="text-[11px] leading-tight text-amber-300/90">
+                <p className="mt-1 text-[11px] leading-tight text-amber-300/90">
                   ⚠ {razlog}
                 </p>
               )}
@@ -1392,6 +1486,7 @@ function TrgIgralcev({
       )}
       <p className="text-center text-xs text-slate-600">
         Iz istega kluba lahko izbereš največ {MAX_IZ_KLUBA} igralce.
+        Goli in minute so iz tekoče sezone.
       </p>
     </section>
   )
