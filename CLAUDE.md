@@ -4,7 +4,10 @@ Navodila za Claude Code pri delu na tem projektu.
 
 ## O projektu
 
-Fantasy football aplikacija za člansko kategorijo 1. Gorenjske nogometne lige (MNZG Kranj). Uporabniki sestavljajo fantasy ekipe iz realnih igralcev znotraj proračuna in tekmujejo na skupni lestvici.
+Fantasy football aplikacija za 1. Gorenjsko nogometno ligo (MNZG Kranj). Pokriva
+dve tekmovanji — **člane** in **mladince** — vsako s svojimi igralci, krogi,
+ekipami in lestvico. Uporabniki sestavljajo fantasy ekipe iz realnih igralcev
+znotraj proračuna in tekmujejo na skupni lestvici svoje lige.
 
 Točke temeljijo na uradni statistiki iz zapisnikov MNZ Gorenjska. Skupnost z glasovanjem
 določi le tisto, česar zapisnik ne pove: **asistence** in **pozicije** (zapisnik označi le
@@ -18,9 +21,30 @@ vratarja z (V), postave pa našteje po številkah dresov). Prag je 5 glasov.
 
 Lokalni razvoj teče na Supabase CLI stacku v Dockerju (`npx supabase start`).
 
+## Dve ligi
+
+`competitions` (`clani`, `mladinci`) nosita tri tabele, vse ostalo se izpelje:
+
+- `rounds.competition_id` → krog in z njim tekme, goli, nastopi
+- `players.competition_id` → mladinec in član sta **dve vrstici**, tudi če gre
+  za isto osebo; prehod med selekcijama tako ne povleče statistike in cene
+- `fantasy_teams.competition_id` → vsak ima lahko po eno ekipo v vsaki ligi
+
+`teams` (klubi) so **skupni** — Šenčur je isti klub, ne glede na selekcijo.
+Vir isti klub piše različno ("Eltron Preddvor" pri članih, "Preddvor SP Avto"
+pri mladincih), zato uvoz imena preslika v `scripts/klubi.mjs`. Kateri klub
+igra v kateri ligi, pove pogled `competition_teams`.
+
+`competitions.prvi_fantasy_krog` pove, od katerega kroga liga šteje za fantasy
+(mladinci od 2., ker se do takrat še vrstijo prestopi in prehodi med člane).
+Vsi pogledi imajo stolpec `competition_id`; vmesnik izbrano ligo hrani v
+`src/lib/tekmovanje.jsx` in jo doda v naslov kot `?t=mladinci`.
+
+Uvozne skripte sprejmejo `--tekmovanje mladinci` (privzeto `clani`).
+
 ## Glavni koncepti podatkovnega modela
 
-- `players` → realni igralci, vezani na realni klub (`teams`)
+- `players` → realni igralci, vezani na realni klub (`teams`) in tekmovanje
 - `fantasy_teams` → ekipe uporabnikov, `fantasy_roster` → izbrani igralci
   (`is_starter`, `is_captain`, `is_vice`, `bench_order`)
 - `fantasy_chips` → vloženi pripomočki (zaenkrat le `klop_plus`, enkrat na sezono)
@@ -30,7 +54,10 @@ Lokalni razvoj teče na Supabase CLI stacku v Dockerju (`npx supabase start`).
 - `appearances` → nastop igralca na tekmi (minute, goli, kartoni, prejeti goli)
 - `goals` → posamezen gol; nosi tudi potrjeno asistenco
 - `assist_votes`, `position_votes` → glasovanje skupnosti (prag v `settings`)
-- `player_scores` → točke igralca na krog (iz pogleda `appearance_points`)
+- `player_scores` → točke igralca na krog (iz pogleda `appearance_points`);
+  posnetek se osveži sam, ko se spremeni pozicija igralca ali potrdi asistenca
+  — pozicija odloča, koliko je vreden gol, zato bi brez tega lestvica kazala
+  stanje ob uvozu, ko je pozicijo poznal samo vratar
 - `ucinkovita_postava(ekipa, krog)` → postava po samodejnih menjavah z množitelji;
   iz nje računata `fantasy_round_points` in `fantasy_team_standings`
 - `player_standings` → lestvica igralcev (točke, forma, na tekmo, izbranost)
@@ -66,12 +93,28 @@ povrniti asistence in pozicije, ki ju potrdi z glasovi, in naslednji zagon pade.
 Uvoz podatkov (vsi sprejmejo `SUPABASE_URL` za projekt v oblaku):
 
 ```bash
-node scripts/uvoz-razporeda.mjs --liga 1601 --pisi   # krogi in tekme z datumi
-node scripts/uvoz-zapisnikov.mjs --liga 1502         # rezultati in statistika
-node scripts/ovrednoti-igralce.mjs                   # cene igralcev
+node scripts/uvoz-zapisnikov.mjs --liga 1502         # arhiv (za cene igralcev)
+node scripts/uvoz-zapisnikov.mjs                     # rezultati tekoče sezone
+node scripts/uvoz-razporeda.mjs --pisi               # krogi in tekme z datumi
 node scripts/ugani-pozicije.mjs --pisi               # ugibanje pozicij
+node scripts/ovrednoti-igralce.mjs                   # cene igralcev
 node scripts/prenesi-grbe.mjs --pisi                 # grbi klubov
 ```
+
+Isto zaporedje za mladince — `--tekmovanje mladinci`, arhiv je `--liga 1503`:
+
+```bash
+node scripts/uvoz-zapisnikov.mjs --tekmovanje mladinci --liga 1503
+node scripts/uvoz-zapisnikov.mjs --tekmovanje mladinci
+node scripts/uvoz-razporeda.mjs  --tekmovanje mladinci --pisi
+node scripts/ugani-pozicije.mjs  --tekmovanje mladinci --pisi
+node scripts/ovrednoti-igralce.mjs --tekmovanje mladinci --sezona 2025/26
+```
+
+Brez `--liga` skripte vzamejo šifro tekoče sezone iz `competitions.mnzg_liga`
+— ob novi sezoni je treba posodobiti njo, ne skript. `uvoz-razporeda` iz
+razporeda razbere, kateri klubi letos igrajo, in igralce klubov zunaj lige
+deaktivira (pri mladincih vsako leto odide cela generacija).
 
 ## Preverjanje sprememb
 
@@ -81,3 +124,12 @@ node scripts/prenesi-grbe.mjs --pisi                 # grbi klubov
   obstoječih migracij ne spreminjaj, ker so že uporabljene.
 - Pravila sestave ekipe so na enem mestu v `src/lib/pravila.js` — spreminjaj jih tam,
   ne razpršeno po komponentah.
+- Vsaka nova poizvedba na strani mora filtrirati po `competition_id`, sicer
+  stran pokaže obe ligi hkrati. `useTekmovanje().id` je `null`, dokler se
+  seznam lig ne naloži — do takrat naj stran ne poizveduje.
+- Statistika igralca v `player_overview` je seštevek **vseh** sezon. Kjer gre za
+  tekočo sezono (trg v Moji ekipi, naslovnica, stran Igralci), beri
+  `player_season_standings` s filtrom na sezono; lanska sezona je le zgodovina
+  in izhodišče za ceno.
+- Na trg sodijo samo aktivni igralci (`player_overview.active`) — kader z
+  neaktivnim igralcem `roster_je_veljaven` zavrne in ekipa tiho ostane brez točk.

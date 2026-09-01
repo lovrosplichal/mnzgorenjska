@@ -8,6 +8,10 @@
 // pomeni, da je glasovanje skupnosti ne more več spremeniti.
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
+import {
+  slugTekmovanja,
+  tekmovanje as najdiTekmovanje,
+} from './tekmovanje.mjs'
 
 // --- popravki ---------------------------------------------------------------
 // Vsak popravek išče igralca po `ime` (ILIKE po polnem imenu). Če `klub`
@@ -101,6 +105,11 @@ if (!SERVICE) {
 const pisi = process.argv.includes('--pisi')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
+// Popravki veljajo za eno ligo; brez tega bi soimenjak iz druge lige zadetek
+// naredil dvoumen in popravek bi tiho odpadel.
+const tekmovanje = await najdiTekmovanje(db, slugTekmovanja())
+console.log(`Tekmovanje: ${tekmovanje.name}`)
+
 // --- klubi za lookup --------------------------------------------------------
 const { data: klubi, error: eK } = await db.from('teams').select('id, name')
 if (eK) {
@@ -129,6 +138,7 @@ for (const p of POPRAVKI) {
   let q = db
     .from('player_overview')
     .select('id, full_name, team_id, team_name, position, position_source, value')
+    .eq('competition_id', tekmovanje.id)
   for (const del of p.ime.split(/\s+/).filter(Boolean)) {
     q = q.ilike('full_name', `%${del}%`)
   }
@@ -222,6 +232,7 @@ for (const n of NOVI_IGRALCI) {
   const { data: obstoj } = await db
     .from('players')
     .select('id')
+    .eq('competition_id', tekmovanje.id)
     .ilike('full_name', `%${polnoIme}%`)
     .eq('team_id', klub.id)
     .maybeSingle()
@@ -236,6 +247,7 @@ for (const n of NOVI_IGRALCI) {
   if (!pisi) continue
 
   const { error: eD } = await db.from('players').insert({
+    competition_id: tekmovanje.id,
     team_id: klub.id,
     first_name: n.prvo,
     last_name: n.priimek,
@@ -256,7 +268,10 @@ for (const n of NOVI_IGRALCI) {
 // --- neaktivni --------------------------------------------------------------
 let deaktiviranih = 0
 for (const ime of NEAKTIVNI) {
-  let q = db.from('player_overview').select('id, full_name, team_name')
+  let q = db
+    .from('player_overview')
+    .select('id, full_name, team_name')
+    .eq('competition_id', tekmovanje.id)
   for (const del of ime.split(/\s+/).filter(Boolean)) {
     q = q.ilike('full_name', `%${del}%`)
   }

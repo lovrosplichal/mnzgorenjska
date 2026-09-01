@@ -21,6 +21,7 @@ import {
   formatirajTocke,
   formatirajCeno,
 } from '../lib/pomozno'
+import { useTekmovanje } from '../lib/tekmovanje'
 import Igrisce from '../components/Igrisce'
 import Grb from '../components/Grb'
 import Odstevanje from '../components/Odstevanje'
@@ -28,6 +29,7 @@ import EnajstericaNaIgriscu from '../components/EnajstericaNaIgriscu'
 
 export default function MojaEkipa() {
   const { session, loading } = useAuth()
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [ekipa, setEkipa] = useState(null)
   const [imeEkipe, setImeEkipe] = useState('')
   const [igralci, setIgralci] = useState([])
@@ -57,10 +59,59 @@ export default function MojaEkipa() {
   const imeRef = useRef(null)
 
   useEffect(() => {
-    if (loading) return
+    if (loading || !tekmovanjeId) return
     if (!session) {
       setNalaganje(false)
       return
+    }
+    // Ob preklopu lige začnemo znova — ekipa, kader in zgodovina so vezani
+    // na tekmovanje, mešanica obojega bi pomenila neveljaven kader.
+    setNalaganje(true)
+    setEkipa(null)
+    setIzbrani([])
+    setZacetniIds(new Set())
+    setPripomocki([])
+    setZaklenjenaPostava(null)
+    setPosnetkiPoKrogih([])
+    setTockeZadnjiKrog({})
+
+    // Na trgu štejejo LETOŠNJE številke — lanska sezona je zgodovina in služi
+    // le izhodiščni ceni. Dokler igralec letos še ni igral, ob njih izpišemo
+    // lansko, izrecno označeno: po prvem krogu so sicer vse ničle, mladinec z
+    // lansko generacijo pa ne sme izgledati boljši, kot letos je.
+    async function zStatistikoSezone(seznam, sezone) {
+      const letos = (
+        sezone.find((s) => s.tekoca && s.odigranih > 0) ??
+        sezone.find((s) => s.odigranih > 0) ??
+        sezone[0]
+      )?.season
+      if (!letos) return seznam
+      const lani = sezone.find(
+        (s) => s.season !== letos && s.odigranih > 0,
+      )?.season
+
+      const zaSezono = (sezona) =>
+        sezona
+          ? supabase
+              .from('player_season_standings')
+              .select('id, goals, minutes')
+              .eq('competition_id', tekmovanjeId)
+              .eq('season', sezona)
+          : Promise.resolve({ data: [] })
+
+      const [{ data: statLetos }, { data: statLani }] = await Promise.all([
+        zaSezono(letos),
+        zaSezono(lani),
+      ])
+      const letosPo = new Map((statLetos ?? []).map((s) => [s.id, s]))
+      const laniPo = new Map((statLani ?? []).map((s) => [s.id, s]))
+
+      return seznam.map((i) => ({
+        ...i,
+        goals: letosPo.get(i.id)?.goals ?? 0,
+        minutes: letosPo.get(i.id)?.minutes ?? 0,
+        goli_lani: laniPo.get(i.id)?.goals ?? 0,
+      }))
     }
 
     async function nalozi() {
@@ -72,37 +123,47 @@ export default function MojaEkipa() {
         { data: naslednji },
         { data: moja },
         { data: nast },
+        { data: sezone },
       ] = await Promise.all([
         supabase
           .from('player_overview')
           .select(
-            'id, full_name, position, team_id, team_name, team_short, team_logo, value, points, goals, minutes',
+            'id, full_name, position, team_id, team_name, team_short, team_logo, value, points, goals, minutes, active',
           )
+          .eq('competition_id', tekmovanjeId)
           .order('value', { ascending: false }),
         supabase
           .from('rounds')
           .select('id, season, number, played_on, deadline_at')
+          .eq('competition_id', tekmovanjeId)
           .order('number', { ascending: true }),
         supabase
           .from('naslednji_krog')
           .select('id, number, played_on, deadline_at')
+          .eq('competition_id', tekmovanjeId)
           .maybeSingle(),
         supabase
           .from('fantasy_teams')
           .select('id, name, budget, cash')
           .eq('owner_id', session.user.id)
+          .eq('competition_id', tekmovanjeId)
           .maybeSingle(),
         supabase
           .from('settings')
           .select('key, value')
           .in('key', ['prosti_prestopi', 'kazen_prestopa']),
+        supabase
+          .from('sezone')
+          .select('season, odigranih, tekoca')
+          .eq('competition_id', tekmovanjeId)
+          .order('season', { ascending: false }),
       ])
       if (error) {
         setNapaka(error.message)
         setNalaganje(false)
         return
       }
-      setIgralci(vsi ?? [])
+      setIgralci(await zStatistikoSezone(vsi ?? [], sezone ?? []))
       setKrogi(vsiKrogi ?? [])
       setNaslednjiKrog(naslednji ?? null)
       if (nast?.length) {
@@ -150,6 +211,7 @@ export default function MojaEkipa() {
         const { data: zadnji } = await supabase
           .from('zadnji_odigrani_krog')
           .select('id, number, season')
+          .eq('competition_id', tekmovanjeId)
           .maybeSingle()
         setZadnjiKrog(zadnji ?? null)
         if (zadnji && (nabor ?? []).length) {
@@ -237,7 +299,7 @@ export default function MojaEkipa() {
       setNalaganje(false)
     }
     nalozi()
-  }, [session, loading])
+  }, [session, loading, tekmovanjeId])
 
   const poId = useMemo(
     () => Object.fromEntries(igralci.map((i) => [i.id, i])),
@@ -294,7 +356,8 @@ export default function MojaEkipa() {
 
   const klubi = useMemo(() => {
     const m = new Map()
-    for (const i of igralci) if (i.team_name) m.set(i.team_id, i.team_name)
+    for (const i of igralci)
+      if (i.team_name && i.active !== false) m.set(i.team_id, i.team_name)
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'sl'))
   }, [igralci])
 
@@ -392,7 +455,11 @@ export default function MojaEkipa() {
     if (!ekipaId) {
       const { data, error } = await supabase
         .from('fantasy_teams')
-        .insert({ owner_id: session.user.id, name: imeEkipe.trim() })
+        .insert({
+          owner_id: session.user.id,
+          competition_id: tekmovanjeId,
+          name: imeEkipe.trim(),
+        })
         .select('id, name, budget, cash')
         .single()
       if (error) return setNapaka(error.message)
@@ -509,7 +576,12 @@ export default function MojaEkipa() {
       </p>
     )
 
+  // Neaktivnega igralca (klub letos ne igra, igralec je odšel) na trgu ni:
+  // kader z njim je neveljaven in ekipi tiho vzame vse točke kroga. V kadru,
+  // če je nekdo tja prišel prej, ostane viden — sicer bi z igrišča izginil.
   const vidni = igralci.filter((i) => {
+    if (i.active === false && !izbrani.some((s) => s.player_id === i.id))
+      return false
     if (filterKlub !== 'vsi' && String(i.team_id) !== filterKlub) return false
     if (filterPoz !== 'vse' && i.position !== filterPoz) return false
     if (iskanje && !i.full_name.toLowerCase().includes(iskanje.toLowerCase()))
@@ -552,7 +624,25 @@ export default function MojaEkipa() {
 
   return (
     <div className="space-y-4 pb-24 sm:space-y-6 lg:pb-0">
-      <h1 className="text-2xl font-black naslov sm:text-3xl">Moja ekipa</h1>
+      <h1 className="text-2xl font-black naslov sm:text-3xl">
+        Moja ekipa
+        {tekmovanje && (
+          <span className="ml-2 align-middle text-base font-bold text-slate-500">
+            {tekmovanje.short_name.toLowerCase()}
+          </span>
+        )}
+      </h1>
+
+      {/* V vsaki ligi se igra s svojo ekipo — to je pogosto presenečenje, zato
+          je zapisano nad rokom in ne kje v drobnem tisku. */}
+      {tekmovanje?.slug === 'mladinci' && (
+        <p className="kartica p-3 text-sm text-slate-300">
+          To je <strong>mladinska</strong> ekipa — ločena od članske, s svojim
+          proračunom in svojo lestvico. Mladinci štejejo od{' '}
+          {tekmovanje.prvi_fantasy_krog}. kroga naprej, ker se do takrat še
+          vrstijo prestopi in prehodi med člane.
+        </p>
+      )}
 
       {naslednjiKrog && <Rok krog={naslednjiKrog} />}
 
@@ -1264,6 +1354,12 @@ function TrgIgralcev({
                 </div>
                 <div className="truncate text-xs text-slate-500">
                   {i.team_short} · {i.goals} golov · {i.minutes} min
+                  {!i.minutes && i.goli_lani > 0 && (
+                    <span className="text-slate-600">
+                      {' '}
+                      · lani {i.goli_lani} golov
+                    </span>
+                  )}
                 </div>
               </div>
               <span className="w-16 text-right text-sm font-black tabular-nums text-gnl-300">

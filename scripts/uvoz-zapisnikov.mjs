@@ -4,12 +4,19 @@
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-zapisnikov.mjs --liga 1502
 //   ... --liga 1502 --omeji 5      (samo prvih 5 tekem, za preizkus)
 //   ... --liga 1502 --pocisti      (najprej pobriše demo klube in igralce)
+//   ... --tekmovanje mladinci      (mladinska liga; brez tega člani)
 //
-// Igralce prepozna po klubu in imenu. Vratarja postavi iz oznake (V) v
-// zapisniku; ostale pozicije določi glasovanje uporabnikov.
+// Igralce prepozna po klubu, tekmovanju in imenu. Vratarja postavi iz oznake
+// (V) v zapisniku; ostale pozicije določi glasovanje uporabnikov.
+//
+// Klubi so skupni obema ligama (Šenčur je isti klub), igralci pa ne: mladinec
+// in član z istim imenom sta dve različni vrstici, sicer bi prestop med
+// selekcijama povlekel statistiko in ceno s seboj.
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { parsirajZapisnik, nastopi } from './zapisnik.mjs'
+import { tekmovanje as najdiTekmovanje } from './tekmovanje.mjs'
+import { kljucKluba, kratkoIme } from './klubi.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
 const PREDPOMNILNIK = 'scripts/.predpomnilnik'
@@ -48,11 +55,15 @@ if (!SERVICE) {
   process.exit(1)
 }
 
-const liga = arg('liga', '1502')
 const omeji = arg('omeji') ? Number(arg('omeji')) : null
 const pocisti = Boolean(arg('pocisti'))
 
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
+
+const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
+// Brez `--liga` vzamemo tekočo sezono tekmovanja; arhiv se navede izrecno.
+const liga = arg('liga', tekmovanje.mnzg_liga ?? '1502')
+console.log(`Tekmovanje: ${tekmovanje.name} (liga ${liga})`)
 
 // --- prenos s predpomnilnikom ---------------------------------------------
 if (!existsSync(PREDPOMNILNIK)) mkdirSync(PREDPOMNILNIK, { recursive: true })
@@ -68,35 +79,22 @@ async function prenesi(url, datoteka, sveze = false) {
 }
 
 // --- predpomnilnik za klube in igralce -------------------------------------
-// Zapisnik in razpored isti klub pišeta različno ("Bled Bohinj Hirter" proti
-// "Bled - Bohinj Hirter"), zato klube iščemo po poenostavljenem imenu — brez
-// ločil in velikih črk. Ujemanje po natančnem imenu je ob prvem zapisniku nove
-// sezone ustvarilo dvojnik kluba in sezono razklalo na dva zapisa.
-const poenostavi = (ime) =>
-  ime
-    .toLowerCase()
-    .replace(/[^a-zčšž0-9]+/g, ' ')
-    .trim()
-
-const klubi = new Map() // poenostavljeno ime -> id
+// Klube iščemo po ključu iz `klubi.mjs`, ne po natančnem imenu: vir isti klub
+// piše različno in ujemanje po imenu je ob prvem zapisniku nove sezone
+// ustvarilo dvojnik ter sezono razklalo na dva zapisa.
+const klubi = new Map() // ključ kluba -> id
 const { data: vsiKlubi } = await db.from('teams').select('id, name')
-for (const k of vsiKlubi ?? []) klubi.set(poenostavi(k.name), k.id)
+for (const k of vsiKlubi ?? []) klubi.set(kljucKluba(k.name), k.id)
 const igralci = new Map() // `${team_id}|${ime}` -> id
 
 async function klubId(ime) {
-  const kljuc = poenostavi(ime)
+  const kljuc = kljucKluba(ime)
   if (klubi.has(kljuc)) return klubi.get(kljuc)
 
   const polnoIme = ime.trim()
-  const kratko = polnoIme
-    .split(/\s+/)
-    .map((d) => d[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 4)
   const { data, error } = await db
     .from('teams')
-    .insert({ name: polnoIme, short_name: kratko })
+    .insert({ name: polnoIme, short_name: kratkoIme(polnoIme) })
     .select('id')
     .single()
   if (error) throw new Error(`klub ${polnoIme}: ${error.message}`)
@@ -127,6 +125,7 @@ async function igralecId(teamId, polnoIme, { vratar, st, dvoumno = false }) {
   let poizvedba = db
     .from('players')
     .select('id, position, position_source')
+    .eq('competition_id', tekmovanje.id)
     .eq('team_id', teamId)
     .eq('full_name', polnoIme)
   if (dvoumno) poizvedba = poizvedba.eq('shirt_number', st)
@@ -142,6 +141,7 @@ async function igralecId(teamId, polnoIme, { vratar, st, dvoumno = false }) {
     const { data: drugje } = await db
       .from('players')
       .select('id, position, position_source, team_id, teams(name)')
+      .eq('competition_id', tekmovanje.id)
       .eq('full_name', polnoIme)
       .limit(2)
 
@@ -173,6 +173,7 @@ async function igralecId(teamId, polnoIme, { vratar, st, dvoumno = false }) {
   const { data, error } = await db
     .from('players')
     .insert({
+      competition_id: tekmovanje.id,
       team_id: teamId,
       full_name: polnoIme,
       last_name: priimek,
@@ -192,6 +193,7 @@ async function krogId(sezona, stevilka, datum) {
   const { data: obstoj } = await db
     .from('rounds')
     .select('id')
+    .eq('competition_id', tekmovanje.id)
     .eq('season', sezona)
     .eq('number', stevilka)
     .maybeSingle()
@@ -199,7 +201,12 @@ async function krogId(sezona, stevilka, datum) {
 
   const { data, error } = await db
     .from('rounds')
-    .insert({ season: sezona, number: stevilka, played_on: datum })
+    .insert({
+      competition_id: tekmovanje.id,
+      season: sezona,
+      number: stevilka,
+      played_on: datum,
+    })
     .select('id')
     .single()
   if (error) throw new Error(`krog ${sezona}/${stevilka}: ${error.message}`)
@@ -209,7 +216,11 @@ async function krogId(sezona, stevilka, datum) {
 // --- čiščenje demo podatkov -------------------------------------------------
 if (pocisti) {
   console.log('Brišem demo podatke ...')
-  await db.from('players').delete().like('last_name', '%-%')
+  await db
+    .from('players')
+    .delete()
+    .eq('competition_id', tekmovanje.id)
+    .like('last_name', '%-%')
   const { data: prazniKlubi } = await db.from('teams').select('id, name')
   for (const k of prazniKlubi ?? []) {
     const { count } = await db
@@ -394,7 +405,10 @@ for (const id of ids) {
 console.log(`\n\nUvoženih tekem: ${uvozenih}, preskočenih: ${preskocenih}`)
 
 // --- preračun točk po krogih -------------------------------------------------
-const { data: krogi } = await db.from('rounds').select('id, season, number')
+const { data: krogi } = await db
+  .from('rounds')
+  .select('id, season, number')
+  .eq('competition_id', tekmovanje.id)
 for (const k of krogi ?? []) {
   const { error } = await db.rpc('recompute_round_scores', { p_round_id: k.id })
   if (error) console.log(`  krog ${k.season}/${k.number}: ${error.message}`)
@@ -408,15 +422,19 @@ const { count: stKlubov } = await db
 const { count: stIgralcev } = await db
   .from('players')
   .select('id', { count: 'exact', head: true })
+  .eq('competition_id', tekmovanje.id)
 const { count: stGolov } = await db
   .from('goals')
   .select('id', { count: 'exact', head: true })
 const { count: brezPozicije } = await db
   .from('players')
   .select('id', { count: 'exact', head: true })
+  .eq('competition_id', tekmovanje.id)
   .is('position', null)
 
-console.log(`\nKlubov: ${stKlubov}, igralcev: ${stIgralcev}, golov: ${stGolov}`)
+console.log(
+  `\nKlubov: ${stKlubov}, igralcev v ${tekmovanje.short_name.toLowerCase()}: ${stIgralcev}, golov skupaj: ${stGolov}`,
+)
 console.log(`Igralcev brez pozicije (čakajo na glasovanje): ${brezPozicije}`)
 
 if (vsaOpozorila.length) {

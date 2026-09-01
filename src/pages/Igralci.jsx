@@ -9,6 +9,7 @@ import {
 } from '../lib/pomozno'
 import { Link } from 'react-router-dom'
 import { POZICIJE } from '../lib/pravila'
+import { useTekmovanje } from '../lib/tekmovanje'
 import Grb from '../components/Grb'
 
 // Tabela vseh igralcev lige s tekočimi točkami — po kateremkoli stolpcu se da
@@ -26,6 +27,7 @@ const STOLPCI = [
 ]
 
 export default function Igralci() {
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [igralci, setIgralci] = useState([])
   const [nalaganje, setNalaganje] = useState(true)
   const [napaka, setNapaka] = useState(null)
@@ -40,17 +42,20 @@ export default function Igralci() {
   // Sezone in prva stran lestvice gresta hkrati: čakanje na seznam sezon, da
   // sploh vemo, katero lestvico naložiti, je podvojilo čas do prvega izrisa.
   useEffect(() => {
+    if (!tekmovanjeId) return
     async function nalozi() {
       const [{ data: vse, error }, { data: privzeta }] = await Promise.all([
         supabase
           .from('sezone')
           .select('season, odigranih, tekoca')
+          .eq('competition_id', tekmovanjeId)
           .order('season', { ascending: false }),
         supabase
           .from('player_season_standings')
           .select(
             'id, full_name, position, team_id, team_name, team_short, team_logo, value, season, points, form, last_round, points_per_match, points_per_value, owners, goals, minutes, matches, clean_sheets, rank',
           )
+          .eq('competition_id', tekmovanjeId)
           .order('points', { ascending: false })
           .limit(500),
       ])
@@ -69,12 +74,19 @@ export default function Igralci() {
         setIgralci(zeImamo)
         setNalaganje(false)
       }
+      // Liga brez ene same odigrane tekme (sveže dodano tekmovanje, sezona
+      // pred prvim krogom) nima sezone, ki bi jo spodnji učinek naložil —
+      // brez tega bi stran za vedno obtičala na "Nalaganje …".
+      if (!izbrana) {
+        setIgralci([])
+        setNalaganje(false)
+      }
     }
     nalozi()
-  }, [])
+  }, [tekmovanjeId])
 
   useEffect(() => {
-    if (!sezona) return
+    if (!sezona || !tekmovanjeId) return
     setNalaganje(true)
     const jeTekoca = sezone.find((s) => s.season === sezona)?.tekoca
     ;(async () => {
@@ -83,6 +95,7 @@ export default function Igralci() {
         .select(
           'id, full_name, position, team_id, team_name, team_short, team_logo, value, season, points, form, last_round, points_per_match, points_per_value, owners, goals, minutes, matches, clean_sheets, rank',
         )
+        .eq('competition_id', tekmovanjeId)
         .eq('season', sezona)
         .order('points', { ascending: false })
       if (error) {
@@ -101,6 +114,7 @@ export default function Igralci() {
           .select(
             'id, full_name, position, team_id, value, active, teams!inner(name, short_name, logo_url)',
           )
+          .eq('competition_id', tekmovanjeId)
           .eq('active', true)
         const znani = new Set(vsi.map((i) => i.id))
         const brezStatistike = (aktivni ?? [])
@@ -132,7 +146,7 @@ export default function Igralci() {
       setIgralci(vsi)
       setNalaganje(false)
     })()
-  }, [sezona, sezone])
+  }, [sezona, sezone, tekmovanjeId])
 
   const klubi = useMemo(() => {
     const m = new Map()
@@ -165,7 +179,9 @@ export default function Igralci() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-black naslov sm:text-3xl">Igralci</h1>
+        <h1 className="text-2xl font-black naslov sm:text-3xl">
+          Igralci{tekmovanje ? ` — ${tekmovanje.short_name.toLowerCase()}` : ''}
+        </h1>
         <p className="mt-1 text-sm text-slate-400">
           Statistika iz uradnih zapisnikov MNZ Gorenjska. Klikni stolpec za
           razvrstitev.

@@ -3,6 +3,7 @@
 import { renderToString } from 'react-dom/server'
 import { StaticRouter } from 'react-router'
 import { AuthProvider } from '../src/lib/useAuth'
+import { TekmovanjeProvider, uskladiTekmovanje } from '../src/lib/tekmovanje'
 import Navbar from '../src/components/Navbar'
 import Domov from '../src/pages/Domov'
 import Igralci from '../src/pages/Igralci'
@@ -51,7 +52,9 @@ for (const [ime, Komponenta, pot] of strani) {
     const html = renderToString(
       <StaticRouter location={pot}>
         <AuthProvider>
-          <Komponenta />
+          <TekmovanjeProvider>
+            <Komponenta />
+          </TekmovanjeProvider>
         </AuthProvider>
       </StaticRouter>,
     )
@@ -59,6 +62,57 @@ for (const [ime, Komponenta, pot] of strani) {
   } catch (e) {
     preveri(`izris: ${ime}`, false, e.message)
   }
+}
+
+// --- preklop med ligama ----------------------------------------------------
+// Naslov (`?t=mladinci`) in izbrana liga se poravnavata v obe smeri. Ključno
+// je, da klik na "Člani" — ki parameter odstrani — ne obvelja za spremembo
+// naslova od zunaj, sicer se preklop takoj povozi nazaj na mladince.
+{
+  const u = (vNaslovu, zadnjiVNaslovu, slug, potSeJeSpremenila = false) =>
+    uskladiTekmovanje({ vNaslovu, zadnjiVNaslovu, slug, potSeJeSpremenila })
+
+  preveri(
+    'preklop na mladince zapiše ?t=mladinci',
+    JSON.stringify(u(null, null, 'mladinci')) ===
+      JSON.stringify({ dejanje: 'zapisi-naslov', param: 'mladinci' }),
+  )
+  preveri(
+    'preklop nazaj na člane odstrani parameter',
+    JSON.stringify(u('mladinci', 'mladinci', 'clani')) ===
+      JSON.stringify({ dejanje: 'zapisi-naslov', param: null }),
+  )
+  preveri(
+    'deljena povezava prevzame ligo iz naslova',
+    JSON.stringify(u('mladinci', null, 'clani')) ===
+      JSON.stringify({ dejanje: 'prevzemi-naslov', slug: 'mladinci' }),
+  )
+  preveri(
+    'gumb nazaj na naslov brez parametra vrne člane',
+    JSON.stringify(u(null, 'mladinci', 'mladinci')) ===
+      JSON.stringify({ dejanje: 'prevzemi-naslov', slug: 'clani' }),
+  )
+  preveri(
+    'ko sta naslov in izbira usklajena, se nič ne zgodi',
+    u('mladinci', 'mladinci', 'mladinci').dejanje === 'nic' &&
+      u(null, null, 'clani').dejanje === 'nic',
+  )
+  // Ključno: povezave v meniju parametra ne prenašajo naprej. Klik na
+  // "Igralci" ne sme vreči nazaj na člane.
+  preveri(
+    'navigacija ohrani izbrano ligo',
+    JSON.stringify(u(null, 'mladinci', 'mladinci', true)) ===
+      JSON.stringify({ dejanje: 'zapisi-naslov', param: 'mladinci' }),
+  )
+  preveri(
+    'navigacija znotraj članov ne dela ničesar',
+    u(null, null, 'clani', true).dejanje === 'nic',
+  )
+  preveri(
+    'deljena povezava do druge lige velja tudi ob menjavi poti',
+    JSON.stringify(u('mladinci', null, 'clani', true)) ===
+      JSON.stringify({ dejanje: 'prevzemi-naslov', slug: 'mladinci' }),
+  )
 }
 
 // --- točkovanje ------------------------------------------------------------

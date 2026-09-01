@@ -5,6 +5,7 @@
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-registracij.mjs
 //   ... --leto 2026     (privzeto tekoče leto)
 //   ... --pisi          (dejansko prestavi igralce; brez tega samo poroča)
+//   ... --tekmovanje mladinci  (mladinska liga; brez tega člani)
 //
 // Zapisniki so PDF-i, v njih pa tabela po klubih:
 //
@@ -22,6 +23,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import zlib from 'node:zlib'
+import {
+  slugTekmovanja,
+  tekmovanje as najdiTekmovanje,
+} from './tekmovanje.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
 const PREDPOMNILNIK = 'scripts/.predpomnilnik'
@@ -233,9 +238,16 @@ const naKlub = (uradno) => {
   return klubPoImenu.get(poenostavi(preslikano ?? uradno)) ?? null
 }
 
+// Zapisnik selekcije ne pove, zato prestavljamo v eni ligi naenkrat: če je
+// isti fant v bazi kot mladinec in kot član, sicer ne bi vedeli, katerega
+// od obeh zapisov popraviti.
+const tekmovanje = await najdiTekmovanje(db, slugTekmovanja())
+console.log(`Tekmovanje: ${tekmovanje.name}`)
+
 const { data: igralci } = await db
   .from('players')
   .select('id, full_name, team_id, teams(name)')
+  .eq('competition_id', tekmovanje.id)
 const igralecPoImenu = new Map()
 for (const p of igralci ?? []) igralecPoImenu.set(poenostavi(p.full_name), p)
 

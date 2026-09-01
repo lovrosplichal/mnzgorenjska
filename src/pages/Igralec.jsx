@@ -50,9 +50,12 @@ export default function Igralec() {
       setIgralec(p)
 
       // Trenutna sezona — potrebujemo, da price_changes filtriramo nanjo.
+      // Ligo poberemo kar iz igralca: stran je dosegljiva tudi neposredno s
+      // povezavo, brez izbranega tekmovanja v naslovu.
       const { data: sez } = await supabase
         .from('sezone')
         .select('season')
+        .eq('competition_id', p?.competition_id ?? 0)
         .eq('tekoca', true)
         .maybeSingle()
       const tekocaSez = sez?.season ?? ''
@@ -82,6 +85,7 @@ export default function Igralec() {
           ? supabase
               .from('prihodnje_tekme')
               .select('round_number, played_on, opponent_short, opponent_name, opponent_logo, doma')
+              .eq('competition_id', p.competition_id)
               .eq('team_id', p.team_id)
               .order('played_on')
               .limit(5)

@@ -2,9 +2,11 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useTekmovanje } from '../lib/tekmovanje'
 import Grb from '../components/Grb'
 
 export default function Rezultati() {
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [tekme, setTekme] = useState([])
   const [sezona, setSezona] = useState(null)
   const [krogId, setKrogId] = useState(null)
@@ -12,10 +14,13 @@ export default function Rezultati() {
   const [napaka, setNapaka] = useState(null)
 
   useEffect(() => {
+    if (!tekmovanjeId) return
+    setNalaganje(true)
     async function nalozi() {
       const { data, error } = await supabase
         .from('match_assist_status')
         .select('*')
+        .eq('competition_id', tekmovanjeId)
         .order('played_on', { ascending: false })
       if (error) setNapaka(error.message)
       const vrstice = data ?? []
@@ -26,7 +31,7 @@ export default function Rezultati() {
       setNalaganje(false)
     }
     nalozi()
-  }, [])
+  }, [tekmovanjeId])
 
   const sezone = useMemo(
     () => [...new Set(tekme.map((t) => t.season))].sort().reverse(),
@@ -51,7 +56,9 @@ export default function Rezultati() {
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-3xl font-black naslov">Rezultati</h1>
+        <h1 className="text-3xl font-black naslov">
+          Rezultati{tekmovanje ? ` — ${tekmovanje.short_name.toLowerCase()}` : ''}
+        </h1>
         <p className="max-w-2xl text-slate-400">
           Odigrane tekme iz zapisnikov MNZ Gorenjska. Klikni na tekmo in vidiš
           obe postavi na igrišču — na vsakem dresu točke, ki jih je igralec

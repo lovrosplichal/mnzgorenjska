@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
+import { useTekmovanje } from '../lib/tekmovanje'
 import Grb from '../components/Grb'
 import GolZaGlasovanje, {
   PRAG_ASISTENCE,
@@ -11,6 +12,7 @@ import GolZaGlasovanje, {
 
 export default function Glasovanje() {
   const { session, loading } = useAuth()
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [tekme, setTekme] = useState([])
   const [krogId, setKrogId] = useState(null)
   const [sezona, setSezona] = useState(null)
@@ -26,13 +28,19 @@ export default function Glasovanje() {
   // Vse odigrane tekme naenkrat — samo TEKOČA sezona. Lanska liga ni bila
   // fantasy-aktivna, zato bi glasovanje o lanskih asistencah bilo brez smisla.
   useEffect(() => {
+    if (!tekmovanjeId) return
+    setNalaganje(true)
     async function nalozi() {
       const [{ data, error }, { data: sez }] = await Promise.all([
         supabase
           .from('match_assist_status')
           .select('*')
+          .eq('competition_id', tekmovanjeId)
           .order('played_on', { ascending: false }),
-        supabase.from('sezone').select('season, tekoca'),
+        supabase
+          .from('sezone')
+          .select('season, tekoca')
+          .eq('competition_id', tekmovanjeId),
       ])
       if (error) setNapaka(error.message)
       const tekocaSez = (sez ?? []).find((s) => s.tekoca)?.season ?? null
@@ -44,7 +52,7 @@ export default function Glasovanje() {
       setNalaganje(false)
     }
     nalozi()
-  }, [])
+  }, [tekmovanjeId])
 
   // Ob menjavi kroga izberemo prvo tekmo, ki še potrebuje glasove.
   useEffect(() => {
@@ -196,7 +204,14 @@ export default function Glasovanje() {
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-3xl font-black naslov">Kdo je podal?</h1>
+        <h1 className="text-3xl font-black naslov">
+          Kdo je podal?
+          {tekmovanje && (
+            <span className="ml-2 align-middle text-base font-bold text-slate-500">
+              {tekmovanje.short_name.toLowerCase()}
+            </span>
+          )}
+        </h1>
         <p className="max-w-2xl text-slate-400">
           Zapisniki MNZ Gorenjska beležijo strelce, asistenc pa ne. Določi jih
           skupnost: ko isti igralec pri golu zbere{' '}

@@ -1,6 +1,6 @@
 # Gorenjska Fantasy Liga ⚽
 
-Fantasy football aplikacija za člansko kategorijo **1. Gorenjske nogometne lige (MNZG Kranj)**. Uporabniki sestavljajo svoje ekipe iz realnih igralcev lige in zbirajo točke po uradni statistiki zapisnikov ter tekmujejo na skupni lestvici.
+Fantasy football aplikacija za **1. Gorenjsko nogometno ligo (MNZG Kranj)**. Pokriva dve ligi — **člane** in **mladince** — vsako s svojimi igralci, krogi, ekipami in lestvico. Uporabniki sestavljajo svoje ekipe iz realnih igralcev lige in zbirajo točke po uradni statistiki zapisnikov.
 
 ## Ideja
 
@@ -26,7 +26,8 @@ Pri **5 glasovih** za istega kandidata se podatek potrdi in začne šteti.
 - **Točkovanje** — po pravilih lige iz statistike zapisnikov (glej spodaj).
 - **Rezultati** — odigrane tekme; klik na tekmo pokaže obe postavi na igrišču in
   točke, ki jih je posamezen igralec na njej zaslužil.
-- **Lestvica** — skupna razvrstitev vseh fantasy ekip.
+- **Lestvica** — skupna razvrstitev vseh fantasy ekip lige.
+- **Dve ligi** — v glavi se preklaplja med člani in mladinci; vsaka liga ima svoje igralce, svojo ekipo in svojo lestvico.
 - **Uporabniški računi** — registracija in prijava z e-pošto in geslom.
 - **Pregled kluba/igralcev** — seznam ekip in igralcev 1. GNL.
 - **Administracija** — pregled nepopolnih zapisnikov, ročne pozicije, NZS podatki, preračun točk.
@@ -105,7 +106,9 @@ rezervnih igralcev.
 | Tabela | Opis |
 |---|---|
 | `profiles` | Profili uporabnikov, zastavica `is_admin` |
-| `teams` / `players` | Klubi in igralci 1. GNL (cena, pozicija, vir pozicije) |
+| `competitions` | Ligi: `clani` in `mladinci` (šifra vira, prvi fantasy krog) |
+| `teams` | Klubi — **skupni** obema ligama (grb, ime) |
+| `players` | Igralci ene lige (cena, pozicija, vir pozicije); ista oseba je v obeh ligah dve vrstici |
 | `rounds` / `matches` | Krogi in tekme (z izvorom: `zapisnik_id`, `source_url`) |
 | `appearances` | Nastop igralca na tekmi: minute, goli, kartoni, prejeti goli |
 | `goals` | Posamezni gol (strelec, minuta, 11m, avtogol, potrjena asistenca) |
@@ -117,6 +120,9 @@ rezervnih igralcev.
 | `teams.logo_url` | Grb kluba; brez njega aplikacija nariše ščit z začetnicami |
 | `player_scores` | Točke igralca po krogih |
 | `settings` | Pragova glasov (privzeto 5) |
+
+Vsi pogledi imajo stolpec `competition_id` — vmesnik po njem filtrira izbrano
+ligo. Pogled `competition_teams` pove, kateri klubi igrajo v kateri ligi.
 
 Pogledi: `appearance_points` (točke nastopa),
 `player_overview`, `player_season_stats`,
@@ -166,16 +172,30 @@ za prave podatke uporabi uvoz spodaj.
 ```bash
 export SUPABASE_SERVICE_ROLE_KEY=$(npx supabase status -o json | jq -r .SERVICE_ROLE_KEY)
 
-# uvozi vse zapisnike sezone (--pocisti najprej pobriše demo podatke)
-node scripts/uvoz-zapisnikov.mjs --liga 1502 --pocisti
+# ČLANI (privzeto tekmovanje)
+node scripts/uvoz-zapisnikov.mjs --liga 1502 --pocisti  # lanski arhiv, brez demo podatkov
+node scripts/uvoz-zapisnikov.mjs                        # rezultati tekoče sezone
+node scripts/uvoz-razporeda.mjs --pisi                  # krogi, tekme in roki
+node scripts/ugani-pozicije.mjs --pisi                  # ugibanje pozicij
+node scripts/ovrednoti-igralce.mjs                      # cene iz statistike
 
-# izračunaj cene igralcev iz uvožene statistike
-node scripts/ovrednoti-igralce.mjs
+# MLADINCI — isto zaporedje z --tekmovanje mladinci
+node scripts/uvoz-zapisnikov.mjs  --tekmovanje mladinci --liga 1503
+node scripts/uvoz-zapisnikov.mjs  --tekmovanje mladinci
+node scripts/uvoz-razporeda.mjs   --tekmovanje mladinci --pisi
+node scripts/ugani-pozicije.mjs   --tekmovanje mladinci --pisi
+node scripts/ovrednoti-igralce.mjs --tekmovanje mladinci --sezona 2025/26
 ```
 
-`--liga 1502` je sezona 2025/26, `--liga 1600` tekoča. Prenesene strani se
-predpomnijo v `scripts/.predpomnilnik/`, da ponovni uvoz ne obremenjuje strani
-MNZ.
+Šifra lige na mnzgkranj.si: člani 2025/26 = `1502`, 2026/27 = `1601`;
+mladinci 2025/26 = `1503`, 2026/27 = `1603`. Brez `--liga` skripta vzame
+tekočo sezono iz `competitions.mnzg_liga`, tako da je ob novi sezoni treba
+posodobiti bazo, ne skript. Prenesene strani se predpomnijo v
+`scripts/.predpomnilnik/`, da ponovni uvoz ne obremenjuje strani MNZ.
+
+Mladinci vsako leto zamenjajo generacijo — kdor ni več dovolj star, gre med
+člane. `uvoz-razporeda` zato iz razporeda razbere, kateri klubi letos igrajo,
+in igralce klubov zunaj lige deaktivira, da ne ostanejo na trgu.
 
 Zapisniki so vnešeni ročno in so občasno pomanjkljivi (manjkajoča oznaka
 vratarja, postava z 10 igralci). Uvoz jih vseeno prevzame, opozorila pa zapiše

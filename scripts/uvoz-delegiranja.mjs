@@ -4,7 +4,8 @@
 // Uporaba:
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-delegiranja.mjs           # predogled
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-delegiranja.mjs --pisi    # zapiši
-//   ... --liga 1601      (privzeto 1. GNL)
+//   ... --liga 1601      (privzeto šifra lige izbranega tekmovanja)
+//   ... --tekmovanje mladinci  (mladinska liga; brez tega člani)
 //   ... --sezona 2026/27 (privzeto trenutna tekoča iz baze)
 //   ... --pomak 6        (koliko ur pred prvo tekmo naj bo rok, privzeto 6)
 //
@@ -17,6 +18,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { vBesedilo } from './zapisnik.mjs'
+import { tekmovanje as najdiTekmovanje } from './tekmovanje.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
 const PREDPOMNILNIK = 'scripts/.predpomnilnik'
@@ -54,11 +56,14 @@ const arg = (ime, privzeto = null) => {
     ? process.argv[i + 1]
     : privzeto
 }
-const liga = arg('liga', '1601')
 const sezonaArg = arg('sezona', null)
 const pomakUr = Number(arg('pomak', '6'))
 const pisi = process.argv.includes('--pisi')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
+
+const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
+const liga = arg('liga', tekmovanje.mnzg_liga ?? '1601')
+console.log(`Tekmovanje: ${tekmovanje.name} (liga ${liga})`)
 
 // --- prenos strani z lokalnim predpomnilnikom -------------------------------
 async function prenesi(url, ime, sveze = false) {
@@ -117,6 +122,7 @@ async function naloziKroge() {
   const { data: sez } = await db
     .from('sezone')
     .select('season, tekoca, odigranih')
+    .eq('competition_id', tekmovanje.id)
     .order('season', { ascending: false })
   const sezona =
     sezonaArg ??
@@ -128,6 +134,7 @@ async function naloziKroge() {
   const { data: krogi } = await db
     .from('rounds')
     .select('id, number, season, played_on, deadline_at')
+    .eq('competition_id', tekmovanje.id)
     .eq('season', sezona)
     .order('number')
   return { sezona, krogi: krogi ?? [] }

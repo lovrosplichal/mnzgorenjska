@@ -34,4 +34,5 @@ insert into rounds (season, number, played_on, voting_opens_at, voting_closes_at
   ('2026/27', 1, date '2026-08-09', timestamptz '2026-08-09 20:00+02', timestamptz '2026-08-13 23:59+02'),
   ('2026/27', 2, date '2026-08-16', timestamptz '2026-08-16 20:00+02', timestamptz '2026-08-20 23:59+02'),
   ('2026/27', 3, date '2026-08-23', now() - interval '1 day', now() + interval '6 days')
-on conflict (season, number) do nothing;
+-- Krog je enoličen znotraj tekmovanja; privzeto tekmovanje so člani.
+on conflict (competition_id, season, number) do nothing;

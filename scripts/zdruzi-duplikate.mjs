@@ -55,16 +55,20 @@ const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 async function najdiPare() {
   const { data: p } = await db
     .from('players')
-    .select('id, full_name, team_id, shirt_number, active')
+    .select('id, full_name, team_id, shirt_number, active, competition_id')
+  // Ime združujemo znotraj ene lige. Isti fant je lahko hkrati mladinec in
+  // član — to nista dvojnika, ampak dva različna nastopa z ločeno statistiko
+  // in ceno, zato ju ne smemo zliti.
   const skupine = new Map()
   for (const x of p) {
-    if (!skupine.has(x.full_name)) skupine.set(x.full_name, [])
-    skupine.get(x.full_name).push(x)
+    const kljuc = `${x.competition_id}|${x.full_name}`
+    if (!skupine.has(kljuc)) skupine.set(kljuc, [])
+    skupine.get(kljuc).push(x)
   }
   const kandidati = []
-  for (const [ime, arr] of skupine) {
+  for (const arr of skupine.values()) {
     if (arr.length < 2 || arr.length > PREVEC_DUPLIKATOV) continue
-    kandidati.push({ ime, zapisi: arr })
+    kandidati.push({ ime: arr[0].full_name, zapisi: arr })
   }
   return kandidati
 }

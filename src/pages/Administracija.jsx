@@ -3,9 +3,11 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { prikazniIme, IME_POZICIJE, formatirajTocke, formatirajCeno } from '../lib/pomozno'
 import { POZICIJE, VELIKOST_EKIPE, STEVILO_PRVIH, MAX_IZ_KLUBA, VRSTNI_RED, poPozicijah } from '../lib/pravila'
+import { useTekmovanje } from '../lib/tekmovanje'
 
 export default function Administracija() {
   const { session, loading } = useAuth()
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [jeAdmin, setJeAdmin] = useState(false)
   const [nalaganje, setNalaganje] = useState(true)
   const [opozorila, setOpozorila] = useState([])
@@ -20,7 +22,7 @@ export default function Administracija() {
   const [ekipe, setEkipe] = useState([])
 
   useEffect(() => {
-    if (loading) return
+    if (loading || !tekmovanjeId) return
     if (!session) {
       setNalaganje(false)
       return
@@ -38,30 +40,43 @@ export default function Administracija() {
         const [tekme, bp, ba, kr, kl] = await Promise.all([
           supabase
             .from('matches')
-            .select('id, zapisnik_id, source_url, import_warnings')
+            .select(
+              'id, zapisnik_id, source_url, import_warnings, rounds!inner(competition_id)',
+            )
+            .eq('rounds.competition_id', tekmovanjeId)
             .not('import_warnings', 'eq', '{}')
             .limit(50),
           supabase
             .from('players')
             .select('id', { count: 'exact', head: true })
+            .eq('competition_id', tekmovanjeId)
             .is('position', null),
           supabase
             .from('goals')
-            .select('id', { count: 'exact', head: true })
+            .select('id, matches!inner(rounds!inner(competition_id))', {
+              count: 'exact',
+              head: true,
+            })
+            .eq('matches.rounds.competition_id', tekmovanjeId)
             .is('assist_player_id', null)
             .eq('is_own_goal', false),
           supabase
             .from('rounds')
             .select('id, season, number')
+            .eq('competition_id', tekmovanjeId)
             .order('season')
             .order('number'),
-          supabase.from('teams').select('id, name').order('name'),
+          supabase
+            .from('competition_teams')
+            .select('team_id, name')
+            .eq('competition_id', tekmovanjeId)
+            .order('name'),
         ])
         setOpozorila((tekme.data ?? []).filter((t) => t.import_warnings?.length))
         setBrezPozicije(bp.count ?? 0)
         setBrezAsistence(ba.count ?? 0)
         setKrogi(kr.data ?? [])
-        setKlubi(kl.data ?? [])
+        setKlubi((kl.data ?? []).map((k) => ({ id: k.team_id, name: k.name })))
 
         // Vse fantasy ekipe s celo rostersko sliko za sanity-check.
         await naloziEkipe()
@@ -69,7 +84,7 @@ export default function Administracija() {
       setNalaganje(false)
     }
     init()
-  }, [session, loading])
+  }, [session, loading, tekmovanjeId])
 
   async function naloziEkipe() {
     // wealth + owners + rosters + player positions/teams — dovolj za validacijo
@@ -78,10 +93,12 @@ export default function Administracija() {
         supabase
           .from('fantasy_team_wealth')
           .select('fantasy_team_id, name, starting_budget, cash, roster_value, total_wealth')
+          .eq('competition_id', tekmovanjeId)
           .order('total_wealth', { ascending: false }),
         supabase
           .from('fantasy_teams')
-          .select('id, owner_id, profiles(display_name)'),
+          .select('id, owner_id, profiles(display_name)')
+          .eq('competition_id', tekmovanjeId),
         supabase
           .from('fantasy_roster')
           .select(
@@ -167,6 +184,7 @@ export default function Administracija() {
     const { data } = await supabase
       .from('player_overview')
       .select('id, full_name, team_id, team_name, position, value, minutes, goals')
+      .eq('competition_id', tekmovanjeId)
       .ilike('full_name', `%${iskanje.trim()}%`)
       .limit(15)
     setZadetki(data ?? [])
@@ -222,7 +240,14 @@ export default function Administracija() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-black naslov">Administracija</h1>
+      <h1 className="text-3xl font-black naslov">
+        Administracija
+        {tekmovanje && (
+          <span className="ml-2 align-middle text-base font-bold text-slate-500">
+            {tekmovanje.short_name.toLowerCase()}
+          </span>
+        )}
+      </h1>
 
       {/* pregled */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -357,8 +382,12 @@ export default function Administracija() {
           Uvoz teče iz ukazne vrstice, ker zahteva dostop do spletne strani MNZ:
         </p>
         <pre className="overflow-x-auto rounded-xl bg-slate-950 p-3 text-xs text-slate-300">
-{`SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-zapisnikov.mjs --liga 1600
-SUPABASE_SERVICE_ROLE_KEY=... node scripts/ovrednoti-igralce.mjs`}
+{`SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-zapisnikov.mjs --tekmovanje ${
+  tekmovanje?.slug ?? 'clani'
+}
+SUPABASE_SERVICE_ROLE_KEY=... node scripts/ovrednoti-igralce.mjs --tekmovanje ${
+  tekmovanje?.slug ?? 'clani'
+}`}
         </pre>
       </section>
 

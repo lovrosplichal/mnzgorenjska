@@ -48,10 +48,18 @@ const ok = (label, cond, extra = '') => {
 }
 
 const stamp = process.argv[2] ?? Date.now().toString(36)
-const PRAG = 5
 
 // --- 0. predpogoji ---------------------------------------------------------
 const anon = fresh()
+
+// Pragova bereva iz baze, ne iz konstante v testu: asistenca in pozicija ju
+// imata različna in se dasta spremeniti brez posega v kodo.
+const { data: nastavitve } = await anon.from('settings').select('key, value')
+const nastavitev = (kljuc, privzeto) =>
+  Number((nastavitve ?? []).find((n) => n.key === kljuc)?.value ?? privzeto)
+const PRAG_ASISTENCE = nastavitev('prag_glasov_asistenca', 3)
+const PRAG_POZICIJE = nastavitev('prag_glasov_pozicija', 5)
+const PRAG = Math.max(PRAG_ASISTENCE, PRAG_POZICIJE) // toliko testnih glasovalcev
 const { count: stTekem } = await anon
   .from('matches')
   .select('id', { count: 'exact', head: true })
@@ -103,7 +111,11 @@ const { data: gol } = await u.c
   .from('goals')
   .select('id, match_id, team_id, scorer_id, assist_player_id')
   .eq('is_own_goal', false)
+  // Enajstmetrovka in avtogol asistence nimata in sta že zaklenjena, prav tako
+  // gol, o katerem je skupnost odločila, da podajalca ni — o teh ni glasovanja.
+  .eq('is_penalty', false)
   .is('assist_player_id', null)
+  .is('assist_none_confirmed_at', null)
   .limit(1)
   .single()
 ok('najden gol brez asistence', Boolean(gol))
@@ -120,7 +132,7 @@ const podajalec = soigralci[0].player_id
 const drugi = soigralci[1].player_id
 
 // prvi glasovi (pod pragom)
-for (let n = 0; n < PRAG - 1; n++) {
+for (let n = 0; n < PRAG_ASISTENCE - 1; n++) {
   const { error } = await users[n].c
     .from('assist_votes')
     .insert({ goal_id: gol.id, voter_id: users[n].id, player_id: podajalec })
@@ -132,21 +144,23 @@ const { data: podPragom } = await anon
   .eq('id', gol.id)
   .single()
 ok(
-  `pri ${PRAG - 1} glasovih asistenca še ni potrjena`,
+  `pri ${PRAG_ASISTENCE - 1} glasovih asistenca še ni potrjena`,
   podPragom.assist_player_id === null,
 )
 
 // zadnji glas doseže prag
-await users[PRAG - 1].c
-  .from('assist_votes')
-  .insert({ goal_id: gol.id, voter_id: users[PRAG - 1].id, player_id: podajalec })
+await users[PRAG_ASISTENCE - 1].c.from('assist_votes').insert({
+  goal_id: gol.id,
+  voter_id: users[PRAG_ASISTENCE - 1].id,
+  player_id: podajalec,
+})
 const { data: nadPragom } = await anon
   .from('goals')
   .select('assist_player_id, assist_confirmed_at')
   .eq('id', gol.id)
   .single()
 ok(
-  `pri ${PRAG} glasovih se asistenca potrdi`,
+  `pri ${PRAG_ASISTENCE} glasovih se asistenca potrdi`,
   nadPragom.assist_player_id === podajalec,
   `${nadPragom.assist_player_id}`,
 )
@@ -191,7 +205,15 @@ ok('najden igralec z ugibano pozicijo', Boolean(brezPozicije))
 // Glasujemo za pozicijo, ki je različna od ugibanja, da je popravek razviden.
 const novaPozicija = brezPozicije?.position === 'MID' ? 'DEF' : 'MID'
 
-for (let n = 0; n < PRAG - 1; n++)
+// Prag pozicije ni fiksen: močan statistični prior ga zniža (adaptivni_prag).
+// Test mora zato vprašati bazo, koliko glasov je v TEM primeru dovolj.
+const { data: pragPozicije } = await anon.rpc('adaptivni_prag', {
+  p_player_id: brezPozicije.id,
+  p_position: novaPozicija,
+})
+const PRAG_TEGA = Math.min(PRAG_POZICIJE, Number(pragPozicije ?? PRAG_POZICIJE))
+
+for (let n = 0; n < PRAG_TEGA - 1; n++)
   await users[n].c
     .from('position_votes')
     .insert({
@@ -205,27 +227,43 @@ const { data: pozPod } = await anon
   .eq('id', brezPozicije.id)
   .single()
 ok(
-  `pri ${PRAG - 1} glasovih pozicija še ni potrjena`,
+  `pri ${PRAG_TEGA - 1} glasovih pozicija še ni potrjena`,
   pozPod.position_source === 'ugibanje',
   pozPod.position_source,
 )
 
-await users[PRAG - 1].c
-  .from('position_votes')
-  .insert({
-    player_id: brezPozicije.id,
-    voter_id: users[PRAG - 1].id,
-    position: novaPozicija,
-  })
+await users[PRAG_TEGA - 1].c.from('position_votes').insert({
+  player_id: brezPozicije.id,
+  voter_id: users[PRAG_TEGA - 1].id,
+  position: novaPozicija,
+})
 const { data: pozNad } = await anon
   .from('players')
   .select('position, position_source')
   .eq('id', brezPozicije.id)
   .single()
 ok(
-  `pri ${PRAG} glasovih se ugibanje popravi`,
+  `pri ${PRAG_TEGA} glasovih se ugibanje popravi`,
   pozNad.position === novaPozicija && pozNad.position_source === 'glasovanje',
   `${pozNad.position}/${pozNad.position_source}`,
+)
+
+// Pozicija odloča, koliko je vreden gol in ohranjena mreža, zato se morajo
+// točke osvežiti takoj — sicer lestvica do naslednjega uvoza kaže stanje,
+// kakršno je bilo, ko je pozicijo poznal samo vratar.
+const { data: izNastopov } = await anon
+  .from('appearance_points')
+  .select('points')
+  .eq('player_id', brezPozicije.id)
+const { data: izLestvice } = await anon
+  .from('player_scores')
+  .select('points')
+  .eq('player_id', brezPozicije.id)
+const vsota = (v) => (v ?? []).reduce((s, x) => s + Number(x.points ?? 0), 0)
+ok(
+  'točke sledijo potrjeni poziciji',
+  Math.abs(vsota(izNastopov) - vsota(izLestvice)) < 0.01,
+  `player_scores ${vsota(izLestvice)} proti nastopom ${vsota(izNastopov)}`,
 )
 
 // --- 7. vratar iz zapisnika ni odvisen od glasovanja ------------------------
@@ -392,9 +430,64 @@ ok(
 )
 ok('lestvica pokaže lastnika', moja?.owner_name === 'Tester 1', moja?.owner_name)
 
-// --- 12. pospravljanje ------------------------------------------------------------
+// --- 12. dve ligi ostaneta ločeni ------------------------------------------
+// Isti uporabnik ima lahko ekipo v vsaki ligi, mladinca pa v člansko ekipo ne
+// more postaviti. Brez tega bi se ligi na tihem pomešali že ob prvem prestopu.
+let mladinec = null
+let ekipaM = null
+if (admin) {
+  const { data: mladinci } = await anon
+    .from('competitions')
+    .select('id')
+    .eq('slug', 'mladinci')
+    .maybeSingle()
+
+  const { data: ekipaMlad, error: eEkipaM } = await u.c
+    .from('fantasy_teams')
+    .insert({
+      owner_id: u.id,
+      competition_id: mladinci.id,
+      name: `Mladinci ${stamp}`,
+    })
+    .select('id, competition_id')
+    .single()
+  ekipaM = ekipaMlad
+  ok('ista oseba ima ekipo v obeh ligah', !eEkipaM, eEkipaM?.message)
+
+  const { data: nekKlub } = await anon.from('teams').select('id').limit(1).single()
+  const { data: novMladinec } = await admin
+    .from('players')
+    .insert({
+      competition_id: mladinci.id,
+      team_id: nekKlub.id,
+      full_name: `Testni Mladinec ${stamp}`,
+      last_name: 'Testni',
+      first_name: `Mladinec ${stamp}`,
+      position: 'MID',
+      position_source: 'admin',
+    })
+    .select('id')
+    .single()
+  mladinec = novMladinec
+
+  const { error: eTujec } = await u.c.rpc('shrani_ekipo', {
+    p_team_id: ekipa.id,
+    p_roster: [{ player_id: mladinec.id, is_starter: true }],
+  })
+  ok('mladinec ne more v člansko ekipo', Boolean(eTujec), eTujec?.message)
+
+  const { count: seVednoNabor } = await anon
+    .from('fantasy_roster')
+    .select('player_id', { count: 'exact', head: true })
+    .eq('fantasy_team_id', ekipa.id)
+  ok('zavrnjeno shranjevanje pusti kader pri miru', seVednoNabor === 15)
+}
+
+// --- 13. pospravljanje ------------------------------------------------------------
 await u.c.from('fantasy_roster').delete().eq('fantasy_team_id', ekipa.id)
 await u.c.from('fantasy_teams').delete().eq('id', ekipa.id)
+if (ekipaM) await u.c.from('fantasy_teams').delete().eq('id', ekipaM.id)
+if (mladinec) await admin.from('players').delete().eq('id', mladinec.id)
 for (const usr of users) {
   await usr.c.from('assist_votes').delete().eq('voter_id', usr.id)
   await usr.c.from('position_votes').delete().eq('voter_id', usr.id)

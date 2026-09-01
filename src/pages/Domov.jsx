@@ -3,12 +3,14 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { PRAVILA_OPIS } from '../lib/tockovanje'
 import { prikazniIme, formatirajTocke, formatirajCeno } from '../lib/pomozno'
+import { useTekmovanje } from '../lib/tekmovanje'
 import Grb from '../components/Grb'
 import Klepet from '../components/Klepet'
 import Odstevanje from '../components/Odstevanje'
 import EnajstericaNaIgriscu from '../components/EnajstericaNaIgriscu'
 
 export default function Domov() {
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [stat, setStat] = useState(null)
   const [zvezde, setZvezde] = useState([])
   const [krog, setKrog] = useState(null)
@@ -19,17 +21,36 @@ export default function Domov() {
   const [naslednjiKrog, setNaslednjiKrog] = useState(null)
 
   useEffect(() => {
+    if (!tekmovanjeId) return
     async function nalozi() {
+      // Tekme in goli tekmovanja ne nosijo neposredno — do njega pridemo prek
+      // kroga, zato notranji spoj (`!inner`) namesto navadnega štetja.
       const [tekme, igralci, goli, brezAsistence, top] =
         await Promise.all([
-          supabase.from('matches').select('id', { count: 'exact', head: true }),
-          supabase.from('players').select('id', { count: 'exact', head: true }),
-          supabase.from('goals').select('id', { count: 'exact', head: true }),
+          supabase
+            .from('matches')
+            .select('id, rounds!inner(competition_id)', {
+              count: 'exact',
+              head: true,
+            })
+            .eq('rounds.competition_id', tekmovanjeId),
+          supabase
+            .from('players')
+            .select('id', { count: 'exact', head: true })
+            .eq('competition_id', tekmovanjeId),
+          supabase
+            .from('goals')
+            .select('id, matches!inner(rounds!inner(competition_id))', {
+              count: 'exact',
+              head: true,
+            })
+            .eq('matches.rounds.competition_id', tekmovanjeId),
           // Samo tekme, ki so bile odigrane v zadnjih 21 dneh — sicer 704
           // nerešenih iz prejšnje sezone večno visijo v obvestilu.
           supabase
             .from('match_assist_status')
             .select('brez_asistence, played_on')
+            .eq('competition_id', tekmovanjeId)
             .gte(
               'played_on',
               new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10),
@@ -38,6 +59,7 @@ export default function Domov() {
           supabase
             .from('sezone')
             .select('season')
+            .eq('competition_id', tekmovanjeId)
             .eq('tekoca', true)
             .maybeSingle()
             .then(({ data }) =>
@@ -46,6 +68,7 @@ export default function Domov() {
                 .select(
                   'id, full_name, team_name, team_short, team_logo, position, value, goals, minutes',
                 )
+                .eq('competition_id', tekmovanjeId)
                 .eq('season', data?.season ?? '')
                 .order('goals', { ascending: false })
                 .order('minutes', { ascending: false })
@@ -67,6 +90,7 @@ export default function Domov() {
       const { data: nextRound } = await supabase
         .from('naslednji_krog')
         .select('id, number, season, played_on, deadline_at')
+        .eq('competition_id', tekmovanjeId)
         .maybeSingle()
       setNaslednjiKrog(nextRound ?? null)
 
@@ -83,24 +107,34 @@ export default function Domov() {
         supabase
           .from('matches')
           .select(
-            'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals',
+            'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals, rounds!inner(competition_id)',
           )
+          .eq('rounds.competition_id', tekmovanjeId)
           .is('imported_at', null)
           .order('played_on', { ascending: true, nullsFirst: false })
           .limit(30),
         supabase
           .from('matches')
           .select(
-            'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals',
+            'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals, rounds!inner(competition_id)',
           )
+          .eq('rounds.competition_id', tekmovanjeId)
           .not('imported_at', 'is', null)
           .gte('played_on', enkratDavno)
           .order('played_on', { ascending: false })
           .limit(30),
-        supabase.from('teams').select('id, name, short_name, logo_url'),
-        supabase.from('rounds').select('id, season, number, played_on'),
+        supabase
+          .from('competition_teams')
+          .select('team_id, name, short_name, logo_url')
+          .eq('competition_id', tekmovanjeId),
+        supabase
+          .from('rounds')
+          .select('id, season, number, played_on')
+          .eq('competition_id', tekmovanjeId),
       ])
-      const klubPo = Object.fromEntries((vsiKlubi ?? []).map((t) => [t.id, t]))
+      const klubPo = Object.fromEntries(
+        (vsiKlubi ?? []).map((t) => [t.team_id, { ...t, id: t.team_id }]),
+      )
       const krogPo = Object.fromEntries((vsiKrogi ?? []).map((k) => [k.id, k]))
       const obogati = (m) => ({
         ...m,
@@ -130,6 +164,7 @@ export default function Domov() {
       const { data: zadnji } = await supabase
         .from('zadnji_odigrani_krog')
         .select('id, season, number, played_on')
+        .eq('competition_id', tekmovanjeId)
         .maybeSingle()
       setKrog(zadnji ?? null)
       if (zadnji) {
@@ -164,10 +199,13 @@ export default function Domov() {
           if (!uporabljeni.has(p.player_id)) izbrani.push(p)
         }
         setIdealnaPostava(izbrani)
+      } else {
+        setKrogNajboljsi([])
+        setIdealnaPostava([])
       }
     }
     nalozi()
-  }, [])
+  }, [tekmovanjeId])
 
   return (
     <div className="space-y-10">
@@ -191,7 +229,9 @@ export default function Domov() {
             className="h-24 w-24 drop-shadow-xl sm:h-32 sm:w-32"
           />
           <span className="znacka bg-gnl-400/20 text-gnl-200">
-            1. Gorenjska nogometna liga
+            {tekmovanje?.slug === 'mladinci'
+              ? 'Gorenjska nogometna liga — mladinci'
+              : '1. Gorenjska nogometna liga'}
           </span>
           <h1 className="text-4xl font-black leading-tight naslov sm:text-5xl">
             Sunday League

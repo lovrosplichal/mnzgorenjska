@@ -10,6 +10,9 @@
 // nasprotnikov — od tam jih vzamemo. Ključ v spodnjem seznamu je poenostavljeno
 // ime kluba, kot ga vidi `uvoz-razporeda.mjs`, da se ujemata ne glede na vezaje.
 //
+// Klubi, ki igrajo samo mladinsko ligo, pri NK Kranj niso zbrani — njihove
+// grbe vzamemo z njihovih klubskih strani.
+//
 // Grbi so blagovne znamke klubov; uporabljamo jih za prikaz kluba, kar je pri
 // navijaških straneh običajno. Če kak klub tega ne želi, se vrstica pobriše in
 // aplikacija zanj spet nariše grb iz začetnic.
@@ -33,6 +36,13 @@ const GRBI = {
   'velesovo cerklje': `${NKK}/2026/07/grb-velesovo-cerklje.png`,
   visoko: `${NKK}/2026/07/grb-sd-visoko.png`,
   'zarica kranj': `${NKK}/2026/06/Grb-nk_zarica_kranj.png`,
+
+  // samo mladinska liga
+  jesenice: `${NKK}/2026/07/grb-jesenice.png`,
+  sencur:
+    'https://sportnodrustvo-sencur.si/resources/files/pic/Drago/razno/grb.jpg.JPG',
+  'sobec lesce': 'http://www.nk-lesce.si/wp-content/themes/nklesce/images/logo.png',
+  'eksist ziri': 'https://nklub-ziri.si/wp-content/uploads/2018/11/site-icon.png',
 }
 
 function izEnv() {
@@ -75,6 +85,12 @@ const poenostavi = (ime) =>
 const kljuc = (ime) =>
   poenostavi(ime).replace(/č/g, 'c').replace(/š/g, 's').replace(/ž/g, 'z')
 
+// Grb ni vedno PNG (grb ŠD Šenčur je JPEG), ime datoteke pa naj pove resnico.
+const koncnica = (url) =>
+  (url.match(/\.(png|jpe?g|svg|webp)(?:$|\?)/i)?.[1] ?? 'png')
+    .toLowerCase()
+    .replace('jpeg', 'jpg')
+
 const { data: klubi, error } = await db.from('teams').select('id, name, logo_url')
 if (error) {
   console.error(error.message)
@@ -89,7 +105,7 @@ for (const k of klubi) {
     continue
   }
   const datoteka = kljuc(k.name).split(' ').join('-')
-  nacrt.push({ klub: k, vir, pot: `/grbi/${datoteka}.png` })
+  nacrt.push({ klub: k, vir, pot: `/grbi/${datoteka}.${koncnica(vir)}` })
 }
 
 console.log(`\nGrbov za prenos: ${nacrt.length} / ${klubi.length} klubov`)

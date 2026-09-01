@@ -3,6 +3,10 @@
 // Uporaba:
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/ovrednoti-igralce.mjs
 //   ... --sezona 2025/26
+//   ... --tekmovanje mladinci   (mladinska liga; brez tega člani)
+//
+// Vsaka liga se vrednoti zase: percentili mladincev nimajo nič opraviti s
+// percentili članov, sicer bi mladince do zadnjega stlačilo na dno cenika.
 //
 // Vrednost je med 4.0 in 12.0 (kot pri klasičnem fantasyju). Sestavljena je iz:
 //   - točk na 90 minut (kako dober je, ko igra),
@@ -13,6 +17,7 @@
 // zaradi enega samega dobrega nastopa.
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
+import { tekmovanje as najdiTekmovanje } from './tekmovanje.mjs'
 
 const NAJNIZJA = 4.0
 const NAJVISJA = 12.0
@@ -79,6 +84,17 @@ if (!SERVICE) {
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
 const sezona = arg('sezona')
+const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
+console.log(`Tekmovanje: ${tekmovanje.name}`)
+
+const { data: igralci } = await db
+  .from('players')
+  .select(
+    'id, full_name, position, value, value_start, value_locked, nzs_top_league, nzs_top_league_minutes',
+  )
+  .eq('competition_id', tekmovanje.id)
+
+const naSi = new Set((igralci ?? []).map((p) => p.id))
 
 // --- statistika ------------------------------------------------------------
 let poizvedba = db
@@ -93,7 +109,7 @@ if (error) {
 
 // seštej po igralcu (če je sezon več)
 const poIgralcu = new Map()
-for (const s of stat ?? []) {
+for (const s of (stat ?? []).filter((s) => naSi.has(s.player_id))) {
   const t = poIgralcu.get(s.player_id) ?? { minutes: 0, goals: 0, points: 0, matches: 0, clean_sheets: 0, yellow_cards: 0, red_cards: 0 }
   t.minutes += s.minutes ?? 0
   t.goals += s.goals ?? 0
@@ -104,11 +120,7 @@ for (const s of stat ?? []) {
   t.red_cards += s.red_cards ?? 0
   poIgralcu.set(s.player_id, t)
 }
-console.log(`Igralcev s statistiko: ${poIgralcu.size}`)
-
-const { data: igralci } = await db
-  .from('players')
-  .select('id, full_name, position, value_locked, nzs_top_league, nzs_top_league_minutes')
+console.log(`Igralcev s statistiko: ${poIgralcu.size} od ${naSi.size}`)
 
 // --- surova ocena ----------------------------------------------------------
 // POMEMBNO: vrednost namenoma NE izhaja iz fantasy točk, ker so te odvisne od
@@ -206,9 +218,15 @@ for (const p of igralci ?? []) {
   vrednost = zaokrozi(Math.min(zgornja, Math.max(spodnja, vrednost)))
   razpored.set(vrednost, (razpored.get(vrednost) ?? 0) + 1)
 
+  // `value_start` je sidro borze (cena se od njega lahko oddalji največ 3.0).
+  // Postavimo ga le, kadar ga še ni — sicer bi vsak ponovni zagon sidro
+  // premaknil in bi borza dobila nov manevrski prostor.
+  const popravek = { value: vrednost }
+  if (p.value_start == null) popravek.value_start = vrednost
+
   const { error: eUpd } = await db
     .from('players')
-    .update({ value: vrednost })
+    .update(popravek)
     .eq('id', p.id)
   if (eUpd) console.log(`  ${p.full_name}: ${eUpd.message}`)
   else posodobljenih++
@@ -223,6 +241,7 @@ for (const v of [...razpored.keys()].sort((a, b) => a - b))
 const { data: najdrazji } = await db
   .from('player_overview')
   .select('full_name, team_name, position, value, points, minutes, goals')
+  .eq('competition_id', tekmovanje.id)
   .order('value', { ascending: false })
   .limit(12)
 console.log('\nNajdražji igralci:')

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { prikazniIme, IME_POZICIJE, KRATKA_POZICIJA } from '../lib/pomozno'
+import { useTekmovanje } from '../lib/tekmovanje'
 import Grb from '../components/Grb'
 import { Link } from 'react-router-dom'
 
@@ -22,6 +23,7 @@ function adaptivniPrag(priorZaTo) {
 
 export default function Pozicije() {
   const { session, loading } = useAuth()
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [klubi, setKlubi] = useState([])
   const [klubId, setKlubId] = useState(null)
   const [igralci, setIgralci] = useState([])
@@ -38,16 +40,19 @@ export default function Pozicije() {
   const [samoNepotrjene, setSamoNepotrjene] = useState(true)
 
   useEffect(() => {
+    if (!tekmovanjeId) return
     supabase
-      .from('teams')
-      .select('id, name')
+      .from('competition_teams')
+      .select('team_id, name')
+      .eq('competition_id', tekmovanjeId)
       .order('name')
       .then(({ data }) => {
-        setKlubi(data ?? [])
-        setKlubId(data?.[0]?.id ?? null)
+        const seznam = (data ?? []).map((k) => ({ id: k.team_id, name: k.name }))
+        setKlubi(seznam)
+        setKlubId(seznam[0]?.id ?? null)
         setNalaganje(false)
       })
-  }, [])
+  }, [tekmovanjeId])
 
   // Profil (insider status) in točnost glasovanja — enkrat ob prijavi.
   useEffect(() => {
@@ -95,6 +100,7 @@ export default function Pozicije() {
         .select(
           'id, full_name, position, position_source, shirt_number, minutes, goals, matches, clean_sheets, team_name, team_short, team_logo',
         )
+        .eq('competition_id', tekmovanjeId)
         .eq('team_id', klubId)
         .order('minutes', { ascending: false })
       if (preklican) return
@@ -149,7 +155,7 @@ export default function Pozicije() {
       preklican = true
     }
     // insiderTeamId je v DEP, ker sprememba insider statusa vpliva na uteži.
-  }, [klubId, session, insiderTeamId])
+  }, [klubId, session, insiderTeamId, tekmovanjeId])
 
   async function nastaviInsider(id) {
     if (!session) return
@@ -226,7 +232,14 @@ export default function Pozicije() {
   return (
     <div className="space-y-6">
       <header className="space-y-2">
-        <h1 className="text-3xl font-black naslov">Kje kdo igra?</h1>
+        <h1 className="text-3xl font-black naslov">
+          Kje kdo igra?
+          {tekmovanje && (
+            <span className="ml-2 align-middle text-base font-bold text-slate-500">
+              {tekmovanje.short_name.toLowerCase()}
+            </span>
+          )}
+        </h1>
         <p className="max-w-2xl text-slate-400">
           Zapisniki označijo le vratarja, postave pa naštejejo po številkah
           dresov — pozicij torej ni mogoče razbrati. Določi jih skupnost. Osnovni

@@ -1,7 +1,8 @@
 // Ugane pozicije igralcev iz statistike prejšnje sezone.
 //
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/ugani-pozicije.mjs
-//   ... --pisi        (dejansko zapiše; brez tega samo pokaže predlog)
+//   ... --pisi                  (dejansko zapiše; brez tega samo pokaže predlog)
+//   ... --tekmovanje mladinci   (mladinska liga; brez tega člani)
 //
 // Zamisel: kdor doseže veliko golov, je najbrž napadalec. Kdor golov skoraj
 // nima, prejema pa veliko kartonov, je najbrž branilec. Vmesni so vezisti.
@@ -15,6 +16,10 @@
 // golov kot rezervni napadalec v najboljši.
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
+import {
+  slugTekmovanja,
+  tekmovanje as najdiTekmovanje,
+} from './tekmovanje.mjs'
 
 // Pričakovana sestava enajsterice brez vratarja: 4 branilci, 4 vezisti,
 // 2–3 napadalci. V deležih igralskega kadra kluba:
@@ -57,9 +62,15 @@ const samoNove = process.argv.includes('--samo-nove')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
 // --- podatki ---------------------------------------------------------------
+// Razvrščamo znotraj kluba, klub pa ima lahko ekipo v obeh ligah — zato
+// najprej zožimo na eno tekmovanje, sicer bi mladince primerjali s člani.
+const tekmovanje = await najdiTekmovanje(db, slugTekmovanja())
+console.log(`Tekmovanje: ${tekmovanje.name}`)
+
 const { data: igralci, error } = await db
   .from('player_overview')
   .select('id, full_name, team_id, team_name, position, position_source, minutes, goals, matches, shirt_number')
+  .eq('competition_id', tekmovanje.id)
 if (error) {
   console.error(error.message)
   process.exit(1)

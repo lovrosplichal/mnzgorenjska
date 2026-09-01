@@ -2,6 +2,7 @@
 //
 // Uporaba:
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-razporeda.mjs --liga 1601
+//   ... --tekmovanje mladinci   (mladinska liga; brez tega člani)
 //   ... --pisi        (dejansko zapiše; brez tega samo pokaže, kaj bi naredil)
 //   SUPABASE_URL=...  (za projekt v oblaku; sicer vzame VITE_SUPABASE_URL iz .env)
 //
@@ -13,6 +14,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { vBesedilo } from './zapisnik.mjs'
+import { tekmovanje as najdiTekmovanje } from './tekmovanje.mjs'
+import { kljucKluba, kratkoIme } from './klubi.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
 const PREDPOMNILNIK = 'scripts/.predpomnilnik'
@@ -51,9 +54,12 @@ const arg = (ime, privzeto = null) => {
     ? process.argv[i + 1]
     : privzeto
 }
-const liga = arg('liga', '1601')
 const pisi = process.argv.includes('--pisi')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
+
+const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
+const liga = arg('liga', tekmovanje.mnzg_liga ?? '1601')
+console.log(`Tekmovanje: ${tekmovanje.name} (liga ${liga})`)
 
 async function prenesi(url, ime) {
   const pot = `${PREDPOMNILNIK}/${ime}`
@@ -95,7 +101,17 @@ const krogi = []
 let tekoci = null
 let zadnjiDatum = null
 
+// Ime kluba ima vedno vsaj eno črko. Rezultat ("8 : 1(5 : 0)") je nima — brez
+// tega bi vsak že odigran krog dobil še enkrat toliko izmišljenih tekem.
+const jeIme = (s) => /[a-zžčšđćA-ZŽČŠĐĆ]/.test(s)
+
 for (const v of vrstice) {
+  // Pod razporedom stran nadaljuje z blokom "REZULTATI" DRUGE lige (na strani
+  // mladincev so to člani). Brez tega konca bi ti rezultati pristali v bazi
+  // kot 19. krog mladincev. Naslov bloka je izpisan z velikimi črkami; enako
+  // ime v meniju ("Rezultati") je zato treba pustiti pri miru.
+  if (v === 'REZULTATI' && krogi.length) break
+
   const mKrog = v.match(/^(\d{1,2})\.\s*krog/i)
   if (mKrog) {
     tekoci = { stevilka: Number(mKrog[1]), tekme: [] }
@@ -113,7 +129,7 @@ for (const v of vrstice) {
 
   // "Eltron Preddvor : Tržič 2012" (lahko z datumom na začetku iste vrstice)
   const mTekma = v.match(/^(?:\d{1,2}\.\d{1,2}\.\d{2,4}\s+)?(.+?)\s+:\s+(.+?)$/)
-  if (mTekma && !/^\d+$/.test(mTekma[2])) {
+  if (mTekma && jeIme(mTekma[1]) && jeIme(mTekma[2])) {
     const vRstiDatum = datum(v)
     tekoci.tekme.push({
       domaci: mTekma[1].trim(),
@@ -145,34 +161,20 @@ if (!pisi) {
 }
 
 // --- zapis ------------------------------------------------------------------
-// Razpored in zapisniki isti klub pišejo različno ("Bled - Bohinj Hirter" proti
-// "Bled Bohinj Hirter"), zato primerjamo poenostavljena imena — brez ločil in
-// velikih črk — sicer bi nastal dvojnik.
-const poenostavi = (ime) =>
-  ime
-    .toLowerCase()
-    .replace(/[^a-zčšž0-9]+/g, ' ')
-    .trim()
-
+// Razpored in zapisniki isti klub pišejo različno, zato ga iščemo po ključu iz
+// `klubi.mjs` — sicer bi ob vsakem uvozu nastal dvojnik.
 const klubi = new Map()
 const { data: vsiKlubi } = await db.from('teams').select('id, name')
-for (const k of vsiKlubi ?? []) klubi.set(poenostavi(k.name), k.id)
+for (const k of vsiKlubi ?? []) klubi.set(kljucKluba(k.name), k.id)
 
 async function klubId(ime) {
-  const kljuc = poenostavi(ime)
+  const kljuc = kljucKluba(ime)
   if (klubi.has(kljuc)) return klubi.get(kljuc)
 
   const polnoIme = ime.trim()
-  const kratko = polnoIme
-    .split(/\s+/)
-    .filter((d) => /[a-zčšžA-ZČŠŽ0-9]/.test(d))
-    .map((d) => d[0])
-    .join('')
-    .toUpperCase()
-    .slice(0, 4)
   const { data, error } = await db
     .from('teams')
-    .insert({ name: polnoIme, short_name: kratko })
+    .insert({ name: polnoIme, short_name: kratkoIme(polnoIme) })
     .select('id')
     .single()
   if (error) throw new Error(`klub ${polnoIme}: ${error.message}`)
@@ -183,6 +185,7 @@ async function klubId(ime) {
 
 let novihKrogov = 0
 let novihTekem = 0
+const letosnjiKlubi = new Set()
 
 for (const k of veljavni) {
   const datumKroga = k.tekme.map((t) => t.datum).filter(Boolean).sort()[0]
@@ -193,6 +196,7 @@ for (const k of veljavni) {
   const { data: obstoj } = await db
     .from('rounds')
     .select('id')
+    .eq('competition_id', tekmovanje.id)
     .eq('season', sezona)
     .eq('number', k.stevilka)
     .maybeSingle()
@@ -202,6 +206,7 @@ for (const k of veljavni) {
     const { data, error } = await db
       .from('rounds')
       .insert({
+        competition_id: tekmovanje.id,
         season: sezona,
         number: k.stevilka,
         played_on: datumKroga,
@@ -226,6 +231,8 @@ for (const k of veljavni) {
   for (const t of k.tekme) {
     const domaciId = await klubId(t.domaci)
     const gostjeId = await klubId(t.gostje)
+    letosnjiKlubi.add(domaciId)
+    letosnjiKlubi.add(gostjeId)
 
     const { data: obstojTekma } = await db
       .from('matches')
@@ -249,3 +256,29 @@ for (const k of veljavni) {
 }
 
 console.log(`\nNovih krogov: ${novihKrogov}, novih tekem: ${novihTekem}`)
+
+// --- kdo letos sploh igra ---------------------------------------------------
+// Razpored pove, kateri klubi so v ligi. Igralci klubov, ki jih letos ni,
+// ne smejo ostati na trgu — sicer jih kdo kupi in do konca sezone ne dobi
+// nobene točke. Pri mladincih to ni izjema, ampak pravilo: vsako leto ena
+// generacija odide med člane, kakšen klub pa ekipe sploh ne prijavi.
+if (letosnjiKlubi.size) {
+  const seznam = [...letosnjiKlubi]
+  const { count: deaktiviranih } = await db
+    .from('players')
+    .update({ active: false }, { count: 'exact' })
+    .eq('competition_id', tekmovanje.id)
+    .eq('active', true)
+    .not('team_id', 'in', `(${seznam.join(',')})`)
+  const { count: vrnjenih } = await db
+    .from('players')
+    .update({ active: true }, { count: 'exact' })
+    .eq('competition_id', tekmovanje.id)
+    .eq('active', false)
+    .in('team_id', seznam)
+  console.log(
+    `Klubov v tej sezoni: ${seznam.length}; ` +
+      `deaktiviranih igralcev zunaj lige: ${deaktiviranih ?? 0}, ` +
+      `vrnjenih med aktivne: ${vrnjenih ?? 0}`,
+  )
+}
