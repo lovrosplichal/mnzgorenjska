@@ -1,10 +1,15 @@
 name: Uvoz zapisnikov
 
 # Zapisniki MNZ Gorenjska se objavijo nekaj ur do nekaj dni po tekmi.
-# Ker se tekme 1. GNL igrajo predvsem ob petkih, sobotah in nedeljah,
+# Ker se tekme igrajo predvsem ob petkih, sobotah in nedeljah,
 # na ta dneva pobiramo VSAKO URO (matches končane 17-19h → zapisnik
 # tipično 20-22h, včasih zjutraj). Med tednom enkrat dnevno je dovolj.
 # Uvoz je idempotenten: tekma z istim zapisnikom se posodobi, ne podvoji.
+#
+# ČLANI in MLADINCI sta dve ločeni ligi — vsaka ima svoje krogi, tekme,
+# igralce in fantasy ekipe. Nekateri fantje igrajo v obeh ligah, a v naši
+# bazi sta to dve različni player vrstici (players.competition_id), zato
+# statistika ne uhaja med njima. Uvoz teče za obe zaporedno v istem jobu.
 on:
   schedule:
     # Petek (5), Sobota (6), Nedelja (0) — vsako uro
@@ -12,11 +17,6 @@ on:
     # Ponedeljek do četrtek — enkrat, ob 5:00 UTC (7:00 po naše)
     - cron: '0 5 * * 1-4'
   workflow_dispatch:
-    inputs:
-      liga:
-        description: 'ID lige na mnzgkranj.si'
-        required: false
-        default: '1601'
 
 concurrency:
   group: uvoz
@@ -25,7 +25,10 @@ concurrency:
 jobs:
   uvoz:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:
       - uses: actions/checkout@v4
 
@@ -45,52 +48,40 @@ jobs:
           key: zapisniki-${{ github.run_id }}
           restore-keys: zapisniki-
 
-      - name: Razpored (novi ali prestavljeni krogi)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          LIGA: ${{ github.event.inputs.liga || '1601' }}
-        run: node scripts/uvoz-razporeda.mjs --liga "$LIGA" --pisi
-
-      # Delegacija pove tocne ure zacetka tekem — iz njih izracunamo rok kroga
-      # (6 ur pred prvo tekmo). Delegacije za oddaljene kroge se ni, zato
-      # skript samo tiho preskoci in poskusa naslednjic.
-      - name: Delegacije (roki krogov)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          LIGA: ${{ github.event.inputs.liga || '1601' }}
-        run: node scripts/uvoz-delegiranja.mjs --liga "$LIGA" --pisi
-
-      - name: Zapisniki in točke
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          LIGA: ${{ github.event.inputs.liga || '1601' }}
-        run: node scripts/uvoz-zapisnikov.mjs --liga "$LIGA"
-
-      # Samo porocilo: prestop se prepozna po imenu, kar pri soimenjakih lahko
-      # zgresi. Ce se izkaze za zanesljivo, se doda --pisi.
-      - name: Prestopi med klubi (porocilo)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # === ČLANI (liga 1601) ==============================================
+      # Šifra lige je v competitions.mnzg_liga, zato skripte tukaj --liga
+      # ne potrebujejo — jo poberejo iz baze glede na --tekmovanje.
+      - name: Člani — razpored
+        run: node scripts/uvoz-razporeda.mjs --pisi
+      - name: Člani — delegacije (roki)
+        run: node scripts/uvoz-delegiranja.mjs --pisi
+      - name: Člani — zapisniki
+        run: node scripts/uvoz-zapisnikov.mjs
+      - name: Člani — prestopi (poročilo)
         run: node scripts/uvoz-registracij.mjs
         continue-on-error: true
-
-      # Le za igralce, ki pozicije še nimajo (novinci). Obstoječih ne premetava.
-      - name: Pozicije novincev
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      - name: Člani — pozicije novincev
         run: node scripts/ugani-pozicije.mjs --pisi --samo-nove
 
-      # Samodejno mergira "duplikat" igralce, ki so se pojavili z istim
-      # imenom v drugem klubu (prestop). Le tam, kjer se casovnice NE
-      # prekrivajo — soimenjake pusti pri miru in v izpisu opozori.
-      - name: Zdruzi duplikate igralcev (prestopi)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # === MLADINCI (liga 1603) ==========================================
+      # Ista pipeline, drugačno tekmovanje. Nikoli ne prehaja med lig-ama —
+      # players.competition_id loči igralca, klubi so si skupni.
+      - name: Mladinci — razpored
+        run: node scripts/uvoz-razporeda.mjs --tekmovanje mladinci --pisi
+      - name: Mladinci — delegacije (roki)
+        run: node scripts/uvoz-delegiranja.mjs --tekmovanje mladinci --pisi
+      - name: Mladinci — zapisniki
+        run: node scripts/uvoz-zapisnikov.mjs --tekmovanje mladinci
+      - name: Mladinci — prestopi (poročilo)
+        run: node scripts/uvoz-registracij.mjs --tekmovanje mladinci
+        continue-on-error: true
+      - name: Mladinci — pozicije novincev
+        run: node scripts/ugani-pozicije.mjs --tekmovanje mladinci --pisi --samo-nove
+
+      # === Skupno za obe ligi ============================================
+      # Zdruzi duplikate: kljuc je `competition_id|full_name`, tako
+      # nikoli ne pomesa mladinske vrstice s clansko — mladinec X in
+      # clan X ostaneta locena, cetudi je oseba ista. Poganja se enkrat.
+      - name: Združi duplikate (obe ligi)
         run: node scripts/zdruzi-duplikate.mjs --pisi
         continue-on-error: true
