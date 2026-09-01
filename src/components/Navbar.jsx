@@ -107,8 +107,8 @@ export default function Navbar() {
 
   return (
     <header className="sticky top-0 z-20 border-b border-white/10 bg-slate-950/80 backdrop-blur">
-      <nav className="mx-auto max-w-5xl px-4 py-3">
-        <div className="flex items-center gap-3">
+      <nav className="mx-auto max-w-6xl px-4 py-3">
+        <div className="flex items-center gap-3 lg:gap-4">
           <NavLink to="/" className="flex items-center gap-2 font-black">
             <img src="/logo/slff-grb.png" alt="" className="h-8 w-8" />
             <span className="naslov">SLFF</span>
@@ -116,7 +116,7 @@ export default function Navbar() {
 
           <PreklopLige />
 
-          <div className="ml-auto hidden items-center gap-1 text-sm lg:flex">
+          <div className="ml-auto hidden items-center gap-1.5 text-sm lg:flex">
             {vse.map((p) => (
               <NavLink key={p.pot} to={p.pot} className={slog} end={p.pot === '/'}>
                 {p.naslov}
@@ -127,16 +127,21 @@ export default function Navbar() {
                 )}
               </NavLink>
             ))}
-            {/* Povabi prijatelja — mailto link odpre lokalni mail klient. */}
+            {/* Povabi prijatelja — mailto link odpre lokalni mail klient.
+                Na ozjih desktopih (lg 1024–1279) samo ikona, da menija ne
+                stisne; polni napis se vrne na xl. */}
             <a
               href={VABILO_MAILTO}
+              title="Povabi prijatelja"
+              aria-label="Povabi prijatelja"
               className="rounded-lg bg-fuchsia-500/15 px-3 py-1.5 font-semibold text-fuchsia-200 ring-1 ring-fuchsia-400/30 hover:bg-fuchsia-500/25"
             >
-              ✉️ Povabi
+              <span aria-hidden="true">✉️</span>
+              <span className="ml-1 hidden xl:inline">Povabi</span>
             </a>
           </div>
 
-          <div className="ml-auto text-sm lg:ml-0">
+          <div className="ml-auto text-sm lg:ml-2">
             {session ? (
               <button
                 onClick={() => supabase.auth.signOut()}
