@@ -20,6 +20,11 @@ export default function Administracija() {
   const [zadetki, setZadetki] = useState([])
   const [klubi, setKlubi] = useState([])
   const [ekipe, setEkipe] = useState([])
+  const [uporabniki, setUporabniki] = useState([])
+  const [filterNepopolne, setFilterNepopolne] = useState(false)
+  const [urediEkipa, setUrediEkipa] = useState(null) // { id, name }
+  const [urediUporabnik, setUrediUporabnik] = useState(null) // { user_id, display_name }
+  const [kopirano, setKopirano] = useState(false)
 
   useEffect(() => {
     if (loading || !tekmovanjeId) return
@@ -80,11 +85,69 @@ export default function Administracija() {
 
         // Vse fantasy ekipe s celo rostersko sliko za sanity-check.
         await naloziEkipe()
+        await naloziUporabnike()
       }
       setNalaganje(false)
     }
     init()
   }, [session, loading, tekmovanjeId])
+
+  async function naloziUporabnike() {
+    const { data, error } = await supabase.rpc('admin_uporabniki', {
+      p_competition_id: tekmovanjeId,
+    })
+    if (error) return setNapaka(error.message)
+    setUporabniki(data ?? [])
+  }
+
+  async function preimenujEkipo(id, novo) {
+    setNapaka(null)
+    const { error } = await supabase
+      .from('fantasy_teams')
+      .update({ name: novo })
+      .eq('id', id)
+    if (error) return setNapaka(error.message)
+    setSporocilo(`Ekipa preimenovana v "${novo}".`)
+    setUrediEkipa(null)
+    await naloziEkipe()
+    await naloziUporabnike()
+  }
+
+  async function preimenujUporabnika(user_id, novo) {
+    setNapaka(null)
+    const { error } = await supabase
+      .from('profiles')
+      .update({ display_name: novo })
+      .eq('id', user_id)
+    if (error) return setNapaka(error.message)
+    setSporocilo(`Uporabnik preimenovan v "${novo}".`)
+    setUrediUporabnik(null)
+    await naloziEkipe()
+    await naloziUporabnike()
+  }
+
+  async function kopirajEmaile(seznam) {
+    const emaili = seznam.map((u) => u.email).filter(Boolean).join(', ')
+    try {
+      await navigator.clipboard.writeText(emaili)
+      setKopirano(true)
+      setSporocilo(`${seznam.length} e-poštnih naslovov v odložišču.`)
+      setTimeout(() => setKopirano(false), 2500)
+    } catch {
+      setNapaka('Kopiranje ni uspelo — označi seznam ročno.')
+    }
+  }
+
+  function mailtoNepopolnim(seznam) {
+    const emaili = seznam.map((u) => u.email).filter(Boolean).join(',')
+    const zadeva = encodeURIComponent(
+      `SLFF ${tekmovanje?.short_name ?? ''} — dokončaj ekipo pred naslednjim krogom`,
+    )
+    const telo = encodeURIComponent(
+      `Zdravo!\n\nSLFF ${tekmovanje?.short_name ?? ''} kmalu začne naslednji krog, tvoja ekipa pa še ni pripravljena. Brez veljavne ekipe v tem krogu ne dobiš točk.\n\nDokončaj ekipo tu: https://slff.eu/moja-ekipa\n\nHvala!`,
+    )
+    return `mailto:?bcc=${emaili}&subject=${zadeva}&body=${telo}`
+  }
 
   async function naloziEkipe() {
     // wealth + owners + rosters + player positions/teams — dovolj za validacijo
@@ -251,14 +314,182 @@ export default function Administracija() {
 
       {/* pregled */}
       <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Kazalnik oznaka="Krogov" vrednost={krogi.length} />
+        <Kazalnik oznaka="Uporabnikov" vrednost={uporabniki.length} />
         <Kazalnik oznaka="Fantasy ekip" vrednost={ekipe.length} />
         <Kazalnik
-          oznaka="Neveljavnih rosterjev"
-          vrednost={ekipe.filter((e) => e.napake.length > 0).length}
+          oznaka="Brez veljavne ekipe"
+          vrednost={uporabniki.filter((u) => !u.ekipa_veljavna).length}
           opozori
         />
         <Kazalnik oznaka="Opozoril iz uvoza" vrednost={opozorila.length} opozori />
+      </section>
+
+      {/* uporabniki + e-pošte za opomnik */}
+      <section className="kartica space-y-3 p-3 sm:p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-bold">
+            Uporabniki ({uporabniki.length})
+            {filterNepopolne && (
+              <span className="ml-2 text-xs font-normal text-amber-300">
+                — brez veljavne ekipe: {uporabniki.filter((u) => !u.ekipa_veljavna).length}
+              </span>
+            )}
+          </h2>
+          <label className="flex items-center gap-2 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              checked={filterNepopolne}
+              onChange={(e) => setFilterNepopolne(e.target.checked)}
+            />
+            samo brez veljavne ekipe
+          </label>
+        </div>
+
+        {(() => {
+          const seznam = filterNepopolne
+            ? uporabniki.filter((u) => !u.ekipa_veljavna && u.email)
+            : uporabniki
+          return (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() =>
+                    kopirajEmaile(
+                      uporabniki.filter((u) => !u.ekipa_veljavna && u.email),
+                    )
+                  }
+                  className="gumb-tih text-xs"
+                >
+                  {kopirano ? '✓ kopirano' : 'Kopiraj e-pošte nepopolnih'}
+                </button>
+                <a
+                  href={mailtoNepopolnim(
+                    uporabniki.filter((u) => !u.ekipa_veljavna && u.email),
+                  )}
+                  className="gumb-glavni text-xs"
+                >
+                  ✉️ Odpri e-pošto (BCC)
+                </a>
+                <button onClick={naloziUporabnike} className="text-xs text-slate-400 underline hover:text-gnl-300">
+                  osveži
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs sm:text-sm">
+                  <thead>
+                    <tr className="text-left text-slate-500">
+                      <th className="pb-2 pr-2">Uporabnik</th>
+                      <th className="pb-2 pr-2">E-pošta</th>
+                      <th className="pb-2 pr-2">Ekipa</th>
+                      <th className="pb-2 pr-2 text-right">Kader</th>
+                      <th className="pb-2 pr-2">Status</th>
+                      <th className="pb-2 pr-2">Registracija</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {seznam.map((u) => (
+                      <tr key={u.user_id} className="border-t border-white/5 align-top">
+                        <td className="py-1.5 pr-2 font-semibold">
+                          {urediUporabnik?.user_id === u.user_id ? (
+                            <VrsticaZaUrejanje
+                              zacetna={urediUporabnik.display_name ?? ''}
+                              nashrani={(v) => preimenujUporabnika(u.user_id, v)}
+                              naprekini={() => setUrediUporabnik(null)}
+                            />
+                          ) : (
+                            <button
+                              onClick={() =>
+                                setUrediUporabnik({
+                                  user_id: u.user_id,
+                                  display_name: u.display_name ?? '',
+                                })
+                              }
+                              className="text-left hover:text-gnl-300"
+                              title="Preimenuj uporabnika"
+                            >
+                              {u.display_name || <span className="text-slate-500">—</span>}
+                              <span className="ml-1 text-slate-600">✎</span>
+                              {u.is_admin && (
+                                <span className="znacka ml-2 bg-gnl-400/20 text-gnl-200">admin</span>
+                              )}
+                            </button>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2 text-slate-400">
+                          {u.email ? (
+                            <a href={`mailto:${u.email}`} className="hover:text-gnl-300">
+                              {u.email}
+                            </a>
+                          ) : (
+                            <span className="text-slate-600">—</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {u.team_id ? (
+                            urediEkipa?.id === u.team_id ? (
+                              <VrsticaZaUrejanje
+                                zacetna={urediEkipa.name ?? ''}
+                                nashrani={(v) => preimenujEkipo(u.team_id, v)}
+                                naprekini={() => setUrediEkipa(null)}
+                              />
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  setUrediEkipa({ id: u.team_id, name: u.team_name })
+                                }
+                                className="text-left hover:text-gnl-300"
+                                title="Preimenuj ekipo"
+                              >
+                                {u.team_name}
+                                <span className="ml-1 text-slate-600">✎</span>
+                              </button>
+                            )
+                          ) : (
+                            <span className="text-slate-600">nima ekipe</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2 text-right tabular-nums">
+                          {u.team_id ? `${u.roster_stevilo}/${VELIKOST_EKIPE}` : '—'}
+                        </td>
+                        <td className="py-1.5 pr-2">
+                          {!u.team_id ? (
+                            <span className="znacka bg-amber-400/20 text-amber-200">
+                              brez ekipe
+                            </span>
+                          ) : u.ekipa_veljavna ? (
+                            <span className="znacka bg-gnl-400/20 text-gnl-200">
+                              ✓ ok
+                            </span>
+                          ) : (
+                            <span className="znacka bg-rose-400/20 text-rose-200">
+                              nepopolna
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2 text-xs text-slate-500">
+                          {u.registered_at
+                            ? new Date(u.registered_at).toLocaleDateString('sl-SI', {
+                                day: 'numeric',
+                                month: 'numeric',
+                                year: '2-digit',
+                              })
+                            : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {filterNepopolne && seznam.length === 0 && (
+                <p className="text-sm text-slate-500">
+                  Vsi uporabniki imajo veljavno ekipo — nič za pošiljati.
+                </p>
+              )}
+            </>
+          )
+        })()}
       </section>
 
       {/* Fantasy ekipe — vrednost, cash, veljavnost rosterja */}
@@ -529,5 +760,38 @@ function Kazalnik({ oznaka, vrednost, opozori }) {
         {oznaka}
       </div>
     </div>
+  )
+}
+
+function VrsticaZaUrejanje({ zacetna, nashrani, naprekini }) {
+  const [vrednost, setVrednost] = useState(zacetna)
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault()
+        const t = vrednost.trim()
+        if (t && t !== zacetna) nashrani(t)
+        else naprekini()
+      }}
+      className="flex items-center gap-1"
+    >
+      <input
+        autoFocus
+        value={vrednost}
+        onChange={(e) => setVrednost(e.target.value)}
+        onKeyDown={(e) => e.key === 'Escape' && naprekini()}
+        className="w-40 rounded-lg border border-white/10 bg-slate-900 px-2 py-1 text-xs"
+      />
+      <button type="submit" className="text-xs text-gnl-300 hover:text-gnl-200">
+        ✓
+      </button>
+      <button
+        type="button"
+        onClick={naprekini}
+        className="text-xs text-slate-500 hover:text-slate-300"
+      >
+        ✕
+      </button>
+    </form>
   )
 }

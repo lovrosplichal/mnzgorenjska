@@ -2,6 +2,7 @@ import { Routes, Route, Link } from 'react-router-dom'
 import { AuthProvider } from './lib/useAuth'
 import { TekmovanjeProvider } from './lib/tekmovanje'
 import Navbar from './components/Navbar'
+import OpozoriloEkipe from './components/OpozoriloEkipe'
 import Domov from './pages/Domov'
 import Igralci from './pages/Igralci'
 import Igralec from './pages/Igralec'
@@ -22,6 +23,7 @@ export default function App() {
       <TekmovanjeProvider>
         <div className="min-h-screen">
           <Navbar />
+          <OpozoriloEkipe />
           <main className="mx-auto max-w-5xl px-4 py-8">
             <Routes>
               <Route path="/" element={<Domov />} />
