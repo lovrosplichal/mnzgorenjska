@@ -430,6 +430,99 @@ ok(
 )
 ok('lestvica pokaže lastnika', moja?.owner_name === 'Tester 1', moja?.owner_name)
 
+// --- 11a. glasovanje o poziciji ne razbije tujega kadra ---------------------
+// Kvota kadra se meri po poziciji OB NAKUPU. Ko skupnost igralca prestavi z
+// enega mesta na drugo, kader ostane veljaven — sicer bi lastnik brez svoje
+// krivde v tistem krogu dobil nič točk.
+if (admin) {
+  const kvota = { GK: 2, DEF: 5, MID: 5, FWD: 3 }
+  const { data: naVoljo } = await anon
+    .from('player_overview')
+    .select('id, position, team_id, value')
+    .eq('competition_id', 1)
+    .not('position', 'is', null)
+    .order('value')
+    .limit(400)
+
+  const kader = []
+  const naKlub = {}
+  const naPoz = { GK: 0, DEF: 0, MID: 0, FWD: 0 }
+  for (const p of naVoljo ?? []) {
+    if (naPoz[p.position] >= kvota[p.position]) continue
+    if ((naKlub[p.team_id] ?? 0) >= 3) continue
+    naKlub[p.team_id] = (naKlub[p.team_id] ?? 0) + 1
+    naPoz[p.position]++
+    kader.push(p)
+  }
+  ok(
+    'sestavljen veljaven kader 2-5-5-3',
+    kader.length === 15,
+    `${naPoz.GK}-${naPoz.DEF}-${naPoz.MID}-${naPoz.FWD}`,
+  )
+
+  if (kader.length === 15) {
+    // Prvih 11 mora biti veljavna postava: vratar, 4 branilci, 4 vezisti, 2 napadalca.
+    const vrsta = (poz, n) => kader.filter((p) => p.position === poz).slice(0, n)
+    const prvih = [
+      ...vrsta('GK', 1),
+      ...vrsta('DEF', 4),
+      ...vrsta('MID', 4),
+      ...vrsta('FWD', 2),
+    ].map((p) => p.id)
+
+    let klop = 0
+    const { error: eShrani } = await u.c.rpc('shrani_ekipo', {
+      p_team_id: ekipa.id,
+      p_roster: kader.map((p, i) => ({
+        player_id: p.id,
+        is_starter: prvih.includes(p.id),
+        is_captain: p.id === prvih[5],
+        is_vice: p.id === prvih[6],
+        bench_order: prvih.includes(p.id) ? null : ++klop,
+      })),
+    })
+    ok('shrani_ekipo sprejme veljaven kader', !eShrani, eShrani?.message)
+
+    const { data: predGlasom } = await u.c.rpc('roster_je_veljaven', {
+      p_team_id: ekipa.id,
+    })
+    ok('kader je veljaven', predGlasom === true)
+
+    // Skupnost prestavi enega branilca med napadalce.
+    const branilec = kader.find((p) => p.position === 'DEF')
+    await admin
+      .from('players')
+      .update({ position: 'FWD', position_source: 'glasovanje' })
+      .eq('id', branilec.id)
+
+    const { data: poGlasu } = await u.c.rpc('roster_je_veljaven', {
+      p_team_id: ekipa.id,
+    })
+    ok(
+      'sprememba pozicije NE razbije kadra',
+      poGlasu === true,
+      poGlasu ? '' : 'kader je postal neveljaven',
+    )
+
+    const { data: mesto } = await anon
+      .from('fantasy_roster')
+      .select('buy_position')
+      .eq('fantasy_team_id', ekipa.id)
+      .eq('player_id', branilec.id)
+      .maybeSingle()
+    ok(
+      'mesto v kadru ostane, kot je bilo ob nakupu',
+      mesto?.buy_position === 'DEF',
+      `${mesto?.buy_position}`,
+    )
+
+    await admin
+      .from('players')
+      .update({ position: 'DEF', position_source: 'ugibanje' })
+      .eq('id', branilec.id)
+  }
+}
+
 // --- 11b. borza se premakne samo za odigran krog ----------------------------
 // Cena se sme premakniti šele, ko je krog res odigran, in samo takrat. Uvožen
 // arhiv prejšnje sezone ima točke po krogih; če bi ga borza obračunala, bi

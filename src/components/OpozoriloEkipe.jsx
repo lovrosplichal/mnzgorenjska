@@ -50,7 +50,7 @@ export default function OpozoriloEkipe() {
       const { data: roster } = await supabase
         .from('fantasy_roster')
         .select(
-          'is_starter, is_captain, is_vice, players(id, position, team_id, value)',
+          'is_starter, is_captain, is_vice, buy_position, players(id, position, team_id, value)',
         )
         .eq('fantasy_team_id', ekipa.id)
       if (odjava) return
@@ -59,7 +59,9 @@ export default function OpozoriloEkipe() {
           is_starter: r.is_starter,
           is_captain: r.is_captain,
           is_vice: r.is_vice,
-          position: r.players?.position ?? null,
+          // Mesto v kadru je tisto ob nakupu — enako sodi baza, sicer bi pas
+          // opozarjal na kader, ki je v resnici v redu.
+          position: r.buy_position ?? r.players?.position ?? null,
           team_id: r.players?.team_id ?? null,
           value: Number(r.players?.value ?? 0),
         }))

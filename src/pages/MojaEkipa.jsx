@@ -189,7 +189,7 @@ export default function MojaEkipa() {
           await Promise.all([
             supabase
               .from('fantasy_roster')
-              .select('player_id, is_starter, is_captain, is_vice, buy_value')
+              .select('player_id, is_starter, is_captain, is_vice, buy_value, buy_position')
               .eq('fantasy_team_id', moja.id),
             supabase
               .from('fantasy_chips')
@@ -314,15 +314,24 @@ export default function MojaEkipa() {
     [igralci],
   )
 
+  // V kadru igralec zaseda mesto, na katerem je bil kupljen — po njem se meri
+  // kvota 2-5-5-3 in po njem stoji na igrišču. Če ga skupnost pozneje prestavi,
+  // kader zaradi tega ne razpade (enako sodi `roster_je_veljaven` v bazi);
+  // točke pa mu šteje prava, trenutna pozicija.
   const izbraniPodrobno = useMemo(
     () =>
       izbrani
-        .map((s) => ({
-          ...poId[s.player_id],
-          ...s,
-          // Točke zadnjega odigranega kroga (za prikaz na igrišču).
-          tocke_krog: tockeZadnjiKrog[s.player_id] ?? null,
-        }))
+        .map((s) => {
+          const igralec = poId[s.player_id]
+          return {
+            ...igralec,
+            ...s,
+            position: s.buy_position ?? igralec?.position ?? null,
+            prava_pozicija: igralec?.position ?? null,
+            // Točke zadnjega odigranega kroga (za prikaz na igrišču).
+            tocke_krog: tockeZadnjiKrog[s.player_id] ?? null,
+          }
+        })
         .filter((s) => s.id != null),
     [izbrani, poId, tockeZadnjiKrog],
   )
@@ -382,6 +391,9 @@ export default function MojaEkipa() {
         is_captain: false,
         is_vice: false,
         buy_value: Number(igralec.value ?? 0),
+        // Novi igralec zasede mesto, kakršno ima danes; od tod naprej ga
+        // glasovanje skupnosti ne premakne iz kadra.
+        buy_position: igralec.position ?? null,
       },
     ])
   }
@@ -510,7 +522,7 @@ export default function MojaEkipa() {
     // "novih" ali "odstranjenih" v draftu).
     const { data: svezRoster } = await supabase
       .from('fantasy_roster')
-      .select('player_id, is_starter, is_captain, is_vice, buy_value')
+      .select('player_id, is_starter, is_captain, is_vice, buy_value, buy_position')
       .eq('fantasy_team_id', ekipaId)
     if (svezRoster) {
       setIzbrani(svezRoster)
