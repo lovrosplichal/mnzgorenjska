@@ -250,6 +250,13 @@ export default function Pozicije() {
           uporabnikov z <strong className="text-gnl-300">visoko točnostjo</strong>{' '}
           štejejo več.
         </p>
+        <p className="max-w-2xl rounded-xl bg-white/5 p-3 text-sm text-slate-400">
+          ⏳ Izglasovane pozicije se uveljavijo <strong>enkrat na teden, v
+          ponedeljek zjutraj</strong>, vse naenkrat. Tako se liga med tednom ne
+          spreminja pod prsti: kar vidiš v torek, velja tudi v soboto, ko se
+          zaklene krog. Igralec, ki je že zbral dovolj glasov, je do takrat
+          označen z ⏳.
+        </p>
       </header>
 
       {session && (
@@ -397,6 +404,15 @@ function IgralecKartica({
     ? Object.entries(prior).sort((a, b) => b[1] - a[1])[0]
     : null
 
+  // Glas pozicije ne premakne takoj — zbrani se uveljavijo enkrat na teden, v
+  // ponedeljek zjutraj, da se liga med tednom ne spreminja pod prsti. Brez tega
+  // opozorila bi uporabnik videl zbran prag in nič se ne bi zgodilo.
+  const cakaUveljavitve =
+    !zaklenjeno &&
+    vodilna &&
+    vodilna[0] !== igralec.position &&
+    vodilna[1] >= adaptivniPrag(prior?.[vodilna[0]] ?? 0)
+
   return (
     <li className="kartica kartica-hover p-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -438,6 +454,15 @@ function IgralecKartica({
           >
             {IKONA[igralec.position]} {IME_POZICIJE[igralec.position]}
             {izZapisnika && ' · zapisnik'}
+          </span>
+        )}
+
+        {cakaUveljavitve && (
+          <span
+            className="znacka bg-amber-400/20 text-amber-200"
+            title="Pozicije se uveljavijo enkrat na teden, v ponedeljek zjutraj — tako se liga med tednom ne spreminja pod prsti."
+          >
+            ⏳ izglasovano: {IME_POZICIJE[vodilna[0]]} · v ponedeljek
           </span>
         )}
       </div>

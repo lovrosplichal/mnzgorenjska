@@ -237,13 +237,39 @@ await users[PRAG_TEGA - 1].c.from('position_votes').insert({
   voter_id: users[PRAG_TEGA - 1].id,
   position: novaPozicija,
 })
+
+// Glas sam pozicije ne premakne več — zbrane se uveljavijo enkrat na teden,
+// da se liga med tednom ne spreminja pod prsti. Do takrat igralec čaka.
+const { data: cakajoci } = await anon
+  .from('pozicije_v_cakanju')
+  .select('player_id, izglasovana')
+  .eq('player_id', brezPozicije.id)
+  .maybeSingle()
+ok(
+  'ob dosezenem pragu pozicija caka na tedensko uveljavitev',
+  cakajoci?.izglasovana === novaPozicija,
+  `${cakajoci?.izglasovana ?? 'ni v cakanju'}`,
+)
+
+const { data: pred } = await anon
+  .from('players')
+  .select('position_source')
+  .eq('id', brezPozicije.id)
+  .single()
+ok(
+  'do uveljavitve pozicija ostane nespremenjena',
+  pred.position_source === 'ugibanje',
+  pred.position_source,
+)
+
+await (admin ?? u.c).rpc('uveljavi_pozicije')
 const { data: pozNad } = await anon
   .from('players')
   .select('position, position_source')
   .eq('id', brezPozicije.id)
   .single()
 ok(
-  `pri ${PRAG_TEGA} glasovih se ugibanje popravi`,
+  `po tedenski uveljavitvi se ugibanje popravi`,
   pozNad.position === novaPozicija && pozNad.position_source === 'glasovanje',
   `${pozNad.position}/${pozNad.position_source}`,
 )
