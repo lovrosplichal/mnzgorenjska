@@ -430,6 +430,48 @@ ok(
 )
 ok('lestvica pokaže lastnika', moja?.owner_name === 'Tester 1', moja?.owner_name)
 
+// --- 11b. borza se premakne samo za odigran krog ----------------------------
+// Cena se sme premakniti šele, ko je krog res odigran, in samo takrat. Uvožen
+// arhiv prejšnje sezone ima točke po krogih; če bi ga borza obračunala, bi
+// cene čez noč poskočile za formo, ki je v izhodiščni ceni že upoštevana.
+if (admin) {
+  const preveriBorzo = async (opis, krog) => {
+    if (!krog) return
+    const { data, error } = await admin.rpc('preracunaj_cene', {
+      p_round_id: krog.id,
+    })
+    ok(
+      `borza ne premakne cen: ${opis}`,
+      !error && (data ?? []).length === 0,
+      error?.message ?? `${(data ?? []).length} premikov`,
+    )
+  }
+
+  // Krog prejšnje sezone — arhiv, ki je le izhodišče za ceno.
+  const { data: sezone } = await anon
+    .from('rounds')
+    .select('season')
+    .order('season', { ascending: false })
+  const zadnja = sezone?.[0]?.season
+  const { data: arhivski } = await anon
+    .from('rounds')
+    .select('id, season, number')
+    .neq('season', zadnja)
+    .limit(1)
+    .maybeSingle()
+  await preveriBorzo('krog prejšnje sezone', arhivski)
+
+  // Krog, ki še ni bil odigran (ni uvožene tekme).
+  const { data: neodigran } = await anon
+    .from('rounds')
+    .select('id, number, matches!inner(imported_at)')
+    .eq('season', zadnja)
+    .is('matches.imported_at', null)
+    .limit(1)
+    .maybeSingle()
+  await preveriBorzo('neodigran krog', neodigran)
+}
+
 // --- 12. dve ligi ostaneta ločeni ------------------------------------------
 // Isti uporabnik ima lahko ekipo v vsaki ligi, mladinca pa v člansko ekipo ne
 // more postaviti. Brez tega bi se ligi na tihem pomešali že ob prvem prestopu.
