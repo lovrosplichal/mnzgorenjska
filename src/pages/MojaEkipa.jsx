@@ -942,28 +942,47 @@ export default function MojaEkipa() {
             </p>
           </section>
 
-          {/* Skupaj v zadnjem odigranem krogu — vsota točk starterjev
-              (kapetan × 3, ostali × 1) glede na dejansko stanje v krogu. */}
+          {/* "Kaj-če" scenarij: vsota točk zdajšnjih starterjev, izračunana
+              iz zadnje odigrane runde. Zamenjava igralca to številko
+              spremeni — zato je pomembno, da naslov jasno pove, da NI
+              zgodovinski rezultat te ekipe. Historičen rezultat je v
+              lestvici in posnetku postave; ta vrstica je za oceno "kaj
+              bi bilo, če bi imel zdajsnji kader tudi tam".
+              Skrijemo, ce fantasy scoring v tem tekmovanju še ni začel
+              (mladinci: prvi krog se ne šteje, zato tega prikaza ne
+              rabimo). */}
           {zadnjiKrog &&
-            Object.keys(tockeZadnjiKrog).length > 0 && (
-              <section className="kartica flex flex-wrap items-center justify-between gap-2 p-3 text-sm sm:p-4">
-                <span className="text-slate-400">
-                  Tvoja postava v <strong className="text-slate-200">{zadnjiKrog.number}. krogu</strong>{' '}
-                  ({zadnjiKrog.season})
-                </span>
-                <span className="text-lg font-black tabular-nums text-gnl-300">
-                  {izbraniPodrobno
-                    .filter((s) => s.is_starter)
-                    .reduce(
-                      (v, s) =>
-                        v +
-                        (s.tocke_krog ?? 0) *
-                          (s.is_captain ? KAPETAN_MNOZITELJ : 1),
-                      0,
-                    )
-                    .toFixed(0)}{' '}
-                  točk
-                </span>
+            Object.keys(tockeZadnjiKrog).length > 0 &&
+            (!tekmovanje?.prvi_fantasy_krog ||
+              zadnjiKrog.number >= tekmovanje.prvi_fantasy_krog) && (
+              <section className="kartica p-3 text-sm sm:p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-slate-400">
+                    Zdajšnja postava bi v{' '}
+                    <strong className="text-slate-200">
+                      {zadnjiKrog.number}. krogu
+                    </strong>{' '}
+                    ({zadnjiKrog.season}) prinesla
+                  </span>
+                  <span className="text-lg font-black tabular-nums text-gnl-300">
+                    {izbraniPodrobno
+                      .filter((s) => s.is_starter)
+                      .reduce(
+                        (v, s) =>
+                          v +
+                          (s.tocke_krog ?? 0) *
+                            (s.is_captain ? KAPETAN_MNOZITELJ : 1),
+                        0,
+                      )
+                      .toFixed(0)}{' '}
+                    točk
+                  </span>
+                </div>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  "Kaj-če" pregled — ni zgodovinski rezultat, spremeni se
+                  ob vsaki zamenjavi. Dejanske točke za pretekle kroge
+                  najdeš na lestvici in v posnetku postave.
+                </p>
               </section>
             )}
 

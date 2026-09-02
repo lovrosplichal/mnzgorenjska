@@ -234,14 +234,20 @@ for (const k of veljavni) {
     letosnjiKlubi.add(domaciId)
     letosnjiKlubi.add(gostjeId)
 
-    const { data: obstojTekma } = await db
+    // Pred vstavljanjem preverimo obstoj z .limit(1) namesto .maybeSingle().
+    // Prej: .maybeSingle() ob najdbi >1 vrstice vrne napako in `data`=null,
+    // kar je koda razumela kot "tekme še ni" in vsakič vstavila še eno kopijo.
+    // Tak scenarij se je zgodil po združitvi klubov z različnim zapisom
+    // imena (Bled-Bohinj). Zdaj beremo array in preverjamo dolžino, tako da
+    // je funkcija odporna tudi na že obstoječe podvojene vrstice.
+    const { data: obstojTekme } = await db
       .from('matches')
       .select('id')
       .eq('round_id', krogId)
       .eq('home_team_id', domaciId)
       .eq('away_team_id', gostjeId)
-      .maybeSingle()
-    if (obstojTekma) continue
+      .limit(1)
+    if (obstojTekme && obstojTekme.length > 0) continue
 
     const { error } = await db.from('matches').insert({
       round_id: krogId,
