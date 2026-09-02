@@ -549,6 +549,83 @@ if (admin) {
   }
 }
 
+// --- 11c. prestopi se stejejo med dvema zaklenjenima krogoma ----------------
+// Med rokoma lahko lastnik pocne, kar hoce. Steje razlika med posnetkom tega
+// in prejsnjega kroga: kdor je v novem in ga v prejsnjem ni bilo, je prestop.
+// Prvi zaklenjeni krog sezone je zastonj.
+if (admin) {
+  const { data: sez } = await anon
+    .from('rounds')
+    .select('id, number, season')
+    .eq('competition_id', 1)
+    .order('season', { ascending: false })
+    .order('number')
+    .limit(400)
+  const sezona = sez?.[0]?.season
+  const krogi = (sez ?? []).filter((r) => r.season === sezona).slice(0, 2)
+
+  if (krogi.length === 2) {
+    const { data: nabor } = await anon
+      .from('fantasy_roster')
+      .select('player_id')
+      .eq('fantasy_team_id', ekipa.id)
+    const imam = (nabor ?? []).map((r) => r.player_id)
+
+    // 1) prvi krog: kader je nov, prestopov se ne racuna
+    await admin.from('fantasy_lineups').delete().eq('fantasy_team_id', ekipa.id)
+    await admin.from('fantasy_transfers').delete().eq('fantasy_team_id', ekipa.id)
+    await admin.from('fantasy_lineups').insert(
+      imam.map((id, i) => ({
+        round_id: krogi[0].id,
+        fantasy_team_id: ekipa.id,
+        player_id: id,
+        is_starter: i < 11,
+        bench_order: i < 11 ? null : i - 10,
+      })),
+    )
+
+    // 2) dva igralca zamenjamo in zaklenemo naslednji krog
+    const { data: zamenjave } = await anon
+      .from('player_overview')
+      .select('id')
+      .eq('competition_id', 1)
+      .not('id', 'in', `(${imam.join(',')})`)
+      .limit(2)
+    const nov = imam.slice(0, 13).concat((zamenjave ?? []).map((z) => z.id))
+
+    await admin.from('fantasy_lineups').insert(
+      nov.map((id, i) => ({
+        round_id: krogi[1].id,
+        fantasy_team_id: ekipa.id,
+        player_id: id,
+        is_starter: i < 11,
+        bench_order: i < 11 ? null : i - 10,
+      })),
+    )
+    await admin.rpc('zakleni_krog', { p_round_id: krogi[1].id })
+
+    const { data: prestop } = await anon
+      .from('fantasy_transfers')
+      .select('transfers, free_transfers, penalty')
+      .eq('fantasy_team_id', ekipa.id)
+      .eq('round_id', krogi[1].id)
+      .maybeSingle()
+    ok(
+      'prestopi se stejejo glede na prejsnji zaklenjeni krog',
+      prestop?.transfers === 2,
+      `${prestop?.transfers ?? 'ni zapisa'} prestopov`,
+    )
+    ok(
+      'dva prestopa sta znotraj brezplacnih, brez kazni',
+      Number(prestop?.penalty ?? -1) === 0,
+      `kazen ${prestop?.penalty}`,
+    )
+
+    await admin.from('fantasy_lineups').delete().eq('fantasy_team_id', ekipa.id)
+    await admin.from('fantasy_transfers').delete().eq('fantasy_team_id', ekipa.id)
+  }
+}
+
 // --- 11b. borza se premakne samo za odigran krog ----------------------------
 // Cena se sme premakniti šele, ko je krog res odigran, in samo takrat. Uvožen
 // arhiv prejšnje sezone ima točke po krogih; če bi ga borza obračunala, bi
