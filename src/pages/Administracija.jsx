@@ -210,9 +210,36 @@ export default function Administracija() {
     return `mailto:?bcc=${emaili}&subject=${zadeva}&body=${telo}`
   }
 
+  // PostgREST vrne največ 1000 vrstic na zahtevo in to stori tiho: prenos se
+  // preprosto odreže. Ekipe, ki so padle čez rob, so se na strani prikazale
+  // brez enega samega igralca. Kadrov je čez obe ligi že 1324, zato jih
+  // beremo po straneh in nikoli ne verjamemo, da je ena zahteva dovolj.
+  async function vsiKadri(tekmovanje) {
+    const STRAN = 1000
+    const vse = []
+    for (let od = 0; ; od += STRAN) {
+      const { data, error } = await supabase
+        .from('fantasy_roster')
+        .select(
+          'fantasy_team_id, player_id, is_starter, is_captain, is_vice, buy_value, buy_position, fantasy_teams!inner(competition_id), players(id, full_name, position, team_id, value, active)',
+        )
+        .eq('fantasy_teams.competition_id', tekmovanje)
+        .order('fantasy_team_id')
+        .order('player_id')
+        .range(od, od + STRAN - 1)
+      if (error) {
+        setNapaka(error.message)
+        break
+      }
+      vse.push(...(data ?? []))
+      if (!data || data.length < STRAN) break
+    }
+    return vse
+  }
+
   async function naloziEkipe() {
     // wealth + owners + rosters + player positions/teams — dovolj za validacijo
-    const [{ data: wealth }, { data: teamsBase }, { data: rosters }] =
+    const [{ data: wealth }, { data: teamsBase }, rosters] =
       await Promise.all([
         supabase
           .from('fantasy_team_wealth')
@@ -223,11 +250,7 @@ export default function Administracija() {
           .from('fantasy_teams')
           .select('id, owner_id, profiles(display_name)')
           .eq('competition_id', tekmovanjeId),
-        supabase
-          .from('fantasy_roster')
-          .select(
-            'fantasy_team_id, player_id, is_starter, is_captain, is_vice, buy_value, players(id, full_name, position, team_id, value, active)',
-          ),
+        vsiKadri(tekmovanjeId),
       ])
     const podrostri = new Map()
     for (const r of rosters ?? []) {
@@ -243,7 +266,15 @@ export default function Administracija() {
     )
     const napolnjene = (wealth ?? []).map((w) => {
       const roster = podrostri.get(w.fantasy_team_id) ?? []
-      const kader = roster.map((r) => r.players).filter(Boolean)
+      // Kvoto sodi mesto ob nakupu, enako kot baza — sicer bi administracija
+      // označila za neveljavne kadre, ki so v resnici v redu.
+      const kader = roster
+        .map((r) =>
+          r.players
+            ? { ...r.players, position: r.buy_position ?? r.players.position }
+            : null,
+        )
+        .filter(Boolean)
       const napake = validacijaRosterja(roster, kader)
       return {
         ...w,
