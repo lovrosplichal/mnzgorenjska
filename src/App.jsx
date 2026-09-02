@@ -2,6 +2,7 @@ import { Routes, Route, Link } from 'react-router-dom'
 import { AuthProvider } from './lib/useAuth'
 import { TekmovanjeProvider } from './lib/tekmovanje'
 import Navbar from './components/Navbar'
+import RokKroga from './components/RokKroga'
 import OpozoriloEkipe from './components/OpozoriloEkipe'
 import Domov from './pages/Domov'
 import Igralci from './pages/Igralci'
@@ -22,6 +23,7 @@ export default function App() {
     <AuthProvider>
       <TekmovanjeProvider>
         <div className="min-h-screen overflow-x-hidden">
+          <RokKroga />
           <Navbar />
           <OpozoriloEkipe />
           <main className="mx-auto max-w-5xl px-4 py-8">

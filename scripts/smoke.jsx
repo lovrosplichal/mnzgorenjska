@@ -5,6 +5,7 @@ import { StaticRouter } from 'react-router'
 import { AuthProvider } from '../src/lib/useAuth'
 import { TekmovanjeProvider, uskladiTekmovanje } from '../src/lib/tekmovanje'
 import Navbar from '../src/components/Navbar'
+import RokKroga from '../src/components/RokKroga'
 import Domov from '../src/pages/Domov'
 import Igralci from '../src/pages/Igralci'
 import Lestvica from '../src/pages/Lestvica'
@@ -62,6 +63,23 @@ for (const [ime, Komponenta, pot] of strani) {
   } catch (e) {
     preveri(`izris: ${ime}`, false, e.message)
   }
+}
+
+// Pas z rokom brez podatkov namenoma ne izrise nicesar (rok se ni znan), zato
+// zanj ne moremo zahtevati HTML — preverimo le, da izris ne vrze napake.
+try {
+  renderToString(
+    <StaticRouter location="/">
+      <AuthProvider>
+        <TekmovanjeProvider>
+          <RokKroga />
+        </TekmovanjeProvider>
+      </AuthProvider>
+    </StaticRouter>,
+  )
+  preveri('izris: pas z rokom kroga', true)
+} catch (e) {
+  preveri('izris: pas z rokom kroga', false, e.message)
 }
 
 // --- preklop med ligama ----------------------------------------------------
