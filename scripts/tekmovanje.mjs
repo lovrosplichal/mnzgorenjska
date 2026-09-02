@@ -15,7 +15,7 @@ export function slugTekmovanja(privzeto = 'clani') {
 export async function tekmovanje(db, slug = slugTekmovanja()) {
   const { data, error } = await db
     .from('competitions')
-    .select('id, slug, name, short_name, mnzg_liga, prvi_fantasy_krog')
+    .select('id, slug, name, short_name, mnzg_liga, prvi_fantasy_krog, rok_pomak_ur')
     .eq('slug', slug)
     .maybeSingle()
   if (error) throw new Error(`tekmovanja ni mogoče prebrati: ${error.message}`)

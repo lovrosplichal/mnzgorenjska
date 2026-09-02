@@ -1,5 +1,6 @@
 // Uvozi točne ure prihajajočih tekem iz delegacijske strani MNZ Gorenjska in
-// nastavi rok kroga na 6 ur PRED prvo tekmo v krogu (Fri, Sat, Sun — karkoli).
+// nastavi rok kroga PRED prvo tekmo v krogu (Fri, Sat, Sun — karkoli). Koliko
+// prej, pove `competitions.rok_pomak_ur`: člani 6 ur, mladinci 2 (igrajo ob 7h).
 //
 // Uporaba:
 //   SUPABASE_SERVICE_ROLE_KEY=... node scripts/uvoz-delegiranja.mjs           # predogled
@@ -7,7 +8,7 @@
 //   ... --liga 1601      (privzeto šifra lige izbranega tekmovanja)
 //   ... --tekmovanje mladinci  (mladinska liga; brez tega člani)
 //   ... --sezona 2026/27 (privzeto trenutna tekoča iz baze)
-//   ... --pomak 6        (koliko ur pred prvo tekmo naj bo rok, privzeto 6)
+//   ... --pomak 6        (povozi pomak lige za ta zagon)
 //
 // Vir: https://www.mnzgkranj.si/print.cfm?prikazi=delegiranje&liga=X&krog=N&...
 // Iz strani razberemo tekme, kot npr.
@@ -57,13 +58,15 @@ const arg = (ime, privzeto = null) => {
     : privzeto
 }
 const sezonaArg = arg('sezona', null)
-const pomakUr = Number(arg('pomak', '6'))
 const pisi = process.argv.includes('--pisi')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
 const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
 const liga = arg('liga', tekmovanje.mnzg_liga ?? '1601')
-console.log(`Tekmovanje: ${tekmovanje.name} (liga ${liga})`)
+// Pomak je lastnost lige (mladinci igrajo zgodaj, zato krajsi), `--pomak` pa
+// ga za posamezen zagon se vedno povozi.
+const pomakUr = Number(arg('pomak', null) ?? tekmovanje.rok_pomak_ur ?? 6)
+console.log(`Tekmovanje: ${tekmovanje.name} (liga ${liga}, pomak ${pomakUr}h)`)
 
 // --- prenos strani z lokalnim predpomnilnikom -------------------------------
 async function prenesi(url, ime, sveze = false) {
