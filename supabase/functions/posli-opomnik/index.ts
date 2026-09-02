@@ -81,17 +81,13 @@ Deno.serve(async (req) => {
   if (!competition_id)
     return json({ error: 'Manjka competition_id.' }, 400)
 
-  // 3) Beri seznam uporabnikov brez veljavne ekipe (s service role, ker
-  //    RPC admin_uporabniki bi tudi delal, a je varneje eksplicitno filtrirati).
+  // Service role rabimo za pisanje v email_log in za branje nastavitev; za
+  // seznam uporabnikov pa NE. `admin_uporabniki` je SECURITY DEFINER z
+  // notranjim is_admin(), ta pa bere auth.uid() — pri service role ključu
+  // uporabnika ni, zato je klic vedno padel s "Samo administrator lahko bere
+  // uporabnike." in pošiljanje ni delovalo niti enkrat. Seznam beremo z
+  // uporabnikovim tokenom; da je admin, smo preverili zgoraj.
   const service = createClient(SUPABASE_URL, SERVICE_KEY)
-  const { data: vsi, error: rpcErr } = await service.rpc('admin_uporabniki', {
-    p_competition_id: competition_id,
-  })
-  if (rpcErr) return json({ error: rpcErr.message }, 500)
-
-  const kandidati: Uporabnik[] = (vsi ?? []).filter(
-    (u: Uporabnik) => !u.ekipa_veljavna && u.email,
-  )
 
   // Podatek o ligi za predlogo
   const { data: liga } = await service
@@ -101,14 +97,34 @@ Deno.serve(async (req) => {
     .maybeSingle()
   const oznaka = liga?.short_name ?? ''
 
-  // Test režim: pošlji samo en mail na testni naslov, brez preverbe za log.
+  // Test režim gre PRED branjem uporabnikov: testni gumb obstaja zato, da
+  // preveri samo dostavo pošte, in ne sme pasti zaradi česa drugega.
   if (test_email) {
     const rez = await posljiEnega(RESEND_KEY, EMAIL_FROM, test_email, oznaka, {
       display_name: 'Test',
       brez_ekipe: false,
     })
+    // Tudi test zabeležimo — ko kdo reče "nisem dobil", je prazen dnevnik
+    // najslabši možni odgovor.
+    await service.from('email_log').insert({
+      email: test_email,
+      vrsta: 'test',
+      competition_id,
+      resend_id: rez.id ?? null,
+      napaka: rez.napaka ?? null,
+    })
     return json({ test: true, resend: rez })
   }
+
+  const { data: vsi, error: rpcErr } = await uporabnikov.rpc(
+    'admin_uporabniki',
+    { p_competition_id: competition_id },
+  )
+  if (rpcErr) return json({ error: rpcErr.message }, 500)
+
+  const kandidati: Uporabnik[] = (vsi ?? []).filter(
+    (u: Uporabnik) => !u.ekipa_veljavna && u.email,
+  )
 
   if (suho)
     return json({ suho: true, kandidati_stevilo: kandidati.length })

@@ -27,6 +27,12 @@ export default function Administracija() {
   const [kopirano, setKopirano] = useState(false)
   const [posiljam, setPosiljam] = useState(false)
   const [logMailov, setLogMailov] = useState([])
+  // Pošiljanje je bilo skrito za window.prompt/window.confirm. Na telefonu
+  // ju brskalnik pogosto ne pokaže, na namizju pa ju po nekaj oknih ponudi
+  // blokirati — koda je nato tiho ne naredila nič: brez zahteve, brez napake.
+  // Zato vprašanje in vnos naslova živita kar na strani.
+  const [testniNaslov, setTestniNaslov] = useState('')
+  const [potrjujemOpomnike, setPotrjujemOpomnike] = useState(false)
 
   useEffect(() => {
     if (loading || !tekmovanjeId) return
@@ -109,8 +115,8 @@ export default function Administracija() {
     setLogMailov(log ?? [])
   }
 
-  async function posljiOpomnike(potrjeno) {
-    if (!potrjeno) return
+  async function posljiOpomnike() {
+    setPotrjujemOpomnike(false)
     setNapaka(null)
     setPosiljam(true)
     try {
@@ -133,6 +139,10 @@ export default function Administracija() {
   }
 
   async function posljiTestniMail(naslov) {
+    if (!naslov?.trim()) {
+      setSporocilo(null)
+      return setNapaka('Vpiši naslov, na katerega naj gre testni mail.')
+    }
     setNapaka(null)
     setPosiljam(true)
     try {
@@ -402,31 +412,29 @@ export default function Administracija() {
             : uporabniki
           return (
             <>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <button
-                  onClick={() => {
-                    const st = uporabniki.filter(
-                      (u) => !u.ekipa_veljavna && u.email,
-                    ).length
-                    posljiOpomnike(
-                      window.confirm(
-                        `Poslati opomnik ${st} uporabnikom brez veljavne ekipe?\n\nTisti, ki so opomnik dobili v zadnjih 3 dneh, bodo preskočeni.`,
-                      ),
-                    )
-                  }}
-                  disabled={posiljam}
+                  onClick={() => setPotrjujemOpomnike(true)}
+                  disabled={posiljam || potrjujemOpomnike}
                   className="gumb-glavni text-xs disabled:opacity-50"
                 >
                   {posiljam ? 'Pošiljam …' : '📨 Pošlji opomnike'}
                 </button>
+
+                {/* Vnos naslova stoji na strani, ne v pogovornem oknu —
+                    window.prompt na telefonu marsikje sploh ne skoči. */}
+                <input
+                  type="email"
+                  value={testniNaslov}
+                  onChange={(e) => setTestniNaslov(e.target.value)}
+                  placeholder={session?.user?.email ?? 'naslov@primer.si'}
+                  className="w-48 rounded-lg bg-white/5 px-2 py-1.5 text-xs
+                             ring-1 ring-white/10 placeholder:text-slate-600"
+                />
                 <button
-                  onClick={() => {
-                    const naslov = window.prompt(
-                      'Testni mail na naslov (predlagam tvoj svoj):',
-                      session?.user?.email ?? '',
-                    )
-                    if (naslov) posljiTestniMail(naslov)
-                  }}
+                  onClick={() =>
+                    posljiTestniMail(testniNaslov || session?.user?.email)
+                  }
                   disabled={posiljam}
                   className="gumb-tih text-xs disabled:opacity-50"
                 >
@@ -454,6 +462,35 @@ export default function Administracija() {
                   osveži
                 </button>
               </div>
+
+              {potrjujemOpomnike && (
+                <div className="animiraj-vstop flex flex-wrap items-center gap-2 rounded-xl bg-amber-400/10 p-3 text-sm ring-1 ring-amber-400/30">
+                  <span className="text-amber-100">
+                    Poslati opomnik{' '}
+                    <strong>
+                      {
+                        uporabniki.filter((u) => !u.ekipa_veljavna && u.email)
+                          .length
+                      }
+                    </strong>{' '}
+                    uporabnikom brez veljavne ekipe? Kdor ga je dobil v zadnjih
+                    3 dneh, bo preskočen.
+                  </span>
+                  <button
+                    onClick={posljiOpomnike}
+                    disabled={posiljam}
+                    className="gumb-glavni text-xs disabled:opacity-50"
+                  >
+                    Da, pošlji
+                  </button>
+                  <button
+                    onClick={() => setPotrjujemOpomnike(false)}
+                    className="gumb-tih text-xs"
+                  >
+                    Prekliči
+                  </button>
+                </div>
+              )}
 
               <div className="overflow-x-auto">
                 <table className="w-full text-xs sm:text-sm">
