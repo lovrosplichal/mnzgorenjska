@@ -12,6 +12,20 @@ import { prikazniIme, razredPozicije, KRATKA_POZICIJA } from '../lib/pomozno'
 
 export const PRAG_ASISTENCE = 3
 
+/**
+ * Številka dresa — neposredno iz zapisnika te tekme, ne iz profila igralca
+ * (dres se med sezono lahko zamenja). Enak podpis kot v zapisniku ("16 —
+ * Priimek Ime"), da je iskanje pravega podajalca na igrišču hitrejše.
+ */
+function StDres({ st }) {
+  if (st == null) return null
+  return (
+    <span className="znacka shrink-0 bg-white/10 font-mono tabular-nums text-slate-400">
+      {st}
+    </span>
+  )
+}
+
 /** Ali gol sploh lahko dobi asistenco. */
 export const lahkoImaAsistenco = (gol) => !gol.is_own_goal && !gol.is_penalty
 
@@ -50,6 +64,7 @@ export default function GolZaGlasovanje({
   gol,
   tekma,
   kandidati,
+  nastopi = kandidati,
   glasovi = [],
   mojGlas,
   omogoceno,
@@ -62,6 +77,12 @@ export default function GolZaGlasovanje({
   const vodilni = glasovi[0]
   const brezAsistence = brezAsistencePotrjeno(gol, glasovi)
   const zakljuceno = potrjeno || brezAsistence
+
+  // Strelec je iz `kandidati` izločen (nihče si ne da asistence), zato
+  // njegovo številko poiščemo v vseh nastopih tekme, ne v seznamu kandidatov.
+  const stDresa = Object.fromEntries(
+    (nastopi ?? []).map((n) => [n.player_id, n.shirt_number]),
+  )
 
   const domaci = gol.team_id === tekma?.home_team_id
   const ekipa = {
@@ -101,6 +122,7 @@ export default function GolZaGlasovanje({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-lg">⚽</span>
+            <StDres st={stDresa[gol.scorer?.id]} />
             <strong className="truncate">{ime}</strong>
           </div>
           <div className="text-xs text-slate-500">
@@ -112,7 +134,8 @@ export default function GolZaGlasovanje({
           <div className="flex items-center gap-2 rounded-xl bg-gnl-500/15 px-3 py-2 ring-1 ring-gnl-400/30">
             <span>🅰️</span>
             <div className="text-sm">
-              <div className="font-bold text-gnl-200">
+              <div className="flex items-center gap-1.5 font-bold text-gnl-200">
+                <StDres st={stDresa[gol.assist_player_id]} />
                 {prikazniIme(gol.assist?.full_name)}
               </div>
               <div className="text-xs text-gnl-400/80">
@@ -155,6 +178,8 @@ export default function GolZaGlasovanje({
                 <>
                   Vodi{' '}
                   <strong className="text-gnl-200">
+                    {stDresa[vodilni.player_id] != null &&
+                      `${stDresa[vodilni.player_id]} — `}
                     {prikazniIme(
                       kandidati.find((k) => k.player_id === vodilni.player_id)
                         ?.players?.full_name,
@@ -187,6 +212,10 @@ export default function GolZaGlasovanje({
                   g.player_id == null
                     ? `brez (${g.votes})`
                     : `${
+                        stDresa[g.player_id] != null
+                          ? `${stDresa[g.player_id]} — `
+                          : ''
+                      }${
                         prikazniIme(
                           kandidati.find((k) => k.player_id === g.player_id)
                             ?.players?.full_name,
@@ -218,7 +247,8 @@ export default function GolZaGlasovanje({
                       : 'bg-white/5 hover:bg-white/10'
                   }`}
                 >
-                  <span className={`znacka ${razredPozicije(k.players?.position)}`}>
+                  <StDres st={k.shirt_number} />
+                  <span className={`znacka shrink-0 ${razredPozicije(k.players?.position)}`}>
                     {KRATKA_POZICIJA[k.players?.position] ?? '?'}
                   </span>
                   <span className="min-w-0 flex-1 truncate">

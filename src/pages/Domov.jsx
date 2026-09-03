@@ -13,6 +13,8 @@ export default function Domov() {
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [stat, setStat] = useState(null)
   const [zvezde, setZvezde] = useState([])
+  const [podajalci, setPodajalci] = useState([])
+  const [obrambe, setObrambe] = useState([])
   const [krog, setKrog] = useState(null)
   const [krogNajboljsi, setKrogNajboljsi] = useState([])
   const [idealnaPostava, setIdealnaPostava] = useState([])
@@ -23,9 +25,19 @@ export default function Domov() {
   useEffect(() => {
     if (!tekmovanjeId) return
     async function nalozi() {
+      // Tekoča sezona — potrebuje jo vsaka od treh lestvic spodaj (strelci,
+      // podajalci, obrambe), zato jo poberemo enkrat vnaprej.
+      const { data: sezonaPodatek } = await supabase
+        .from('sezone')
+        .select('season')
+        .eq('competition_id', tekmovanjeId)
+        .eq('tekoca', true)
+        .maybeSingle()
+      const tekocaSezona = sezonaPodatek?.season ?? ''
+
       // Tekme in goli tekmovanja ne nosijo neposredno — do njega pridemo prek
       // kroga, zato notranji spoj (`!inner`) namesto navadnega štetja.
-      const [tekme, igralci, goli, brezAsistence, top] =
+      const [tekme, igralci, goli, brezAsistence, top, podajalciTop, obrambeTop] =
         await Promise.all([
           supabase
             .from('matches')
@@ -55,25 +67,39 @@ export default function Domov() {
               'played_on',
               new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10),
             ),
-          // Najboljši strelci TEKOČE sezone — iz player_season_standings.
+          // Tri lestvice tekoče sezone iz player_season_standings — strelci,
+          // podajalci (asistence gredo skozi glasovanje, zato so na voljo
+          // le potrjene), najbolj zanesljive obrambe (ohranjene mreže).
           supabase
-            .from('sezone')
-            .select('season')
+            .from('player_season_standings')
+            .select(
+              'id, full_name, team_name, team_short, team_logo, position, value, goals, minutes',
+            )
             .eq('competition_id', tekmovanjeId)
-            .eq('tekoca', true)
-            .maybeSingle()
-            .then(({ data }) =>
-              supabase
-                .from('player_season_standings')
-                .select(
-                  'id, full_name, team_name, team_short, team_logo, position, value, goals, minutes',
-                )
-                .eq('competition_id', tekmovanjeId)
-                .eq('season', data?.season ?? '')
-                .order('goals', { ascending: false })
-                .order('minutes', { ascending: false })
-                .limit(5),
-            ),
+            .eq('season', tekocaSezona)
+            .order('goals', { ascending: false })
+            .order('minutes', { ascending: false })
+            .limit(5),
+          supabase
+            .from('player_season_standings')
+            .select(
+              'id, full_name, team_name, team_short, team_logo, position, value, assists, minutes',
+            )
+            .eq('competition_id', tekmovanjeId)
+            .eq('season', tekocaSezona)
+            .order('assists', { ascending: false })
+            .order('minutes', { ascending: false })
+            .limit(5),
+          supabase
+            .from('player_season_standings')
+            .select(
+              'id, full_name, team_name, team_short, team_logo, position, value, clean_sheets, minutes',
+            )
+            .eq('competition_id', tekmovanjeId)
+            .eq('season', tekocaSezona)
+            .order('clean_sheets', { ascending: false })
+            .order('minutes', { ascending: false })
+            .limit(5),
         ])
       setStat({
         tekme: tekme.count ?? 0,
@@ -85,6 +111,8 @@ export default function Domov() {
         ),
       })
       setZvezde(top.data ?? [])
+      setPodajalci(podajalciTop.data ?? [])
+      setObrambe(obrambeTop.data ?? [])
 
       // Naslednji krog — za odštevalnik do zaklepanja postave.
       const { data: nextRound } = await supabase
@@ -514,42 +542,34 @@ export default function Domov() {
           )}
         </div>
         {/* zvezde */}
-        {zvezde.length > 0 && (
-          <section className="space-y-3">
-            <h2 className="text-xl font-bold">Najboljši strelci sezone</h2>
-            <ul className="space-y-2">
-              {zvezde.map((z, i) => (
-                <li
-                  key={z.id}
-                  className="kartica kartica-hover flex items-center gap-2 p-3 sm:gap-3"
-                >
-                  <span className="w-6 text-center font-black text-slate-500">
-                    {i + 1}
-                  </span>
-                  <Grb
-                    ime={z.team_name}
-                    kratko={z.team_short}
-                    logo={z.team_logo}
-                    velikost={22}
-                  />
-                  <Link
-                    to={`/igralec/${z.id}`}
-                    className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
-                  >
-                    {prikazniIme(z.full_name)}
-                  </Link>
-                  <span className="znacka bg-rose-400/15 text-rose-200">
-                    {z.goals} ⚽
-                  </span>
-                  <span className="w-20 text-right font-black tabular-nums text-gnl-300">
-                    {formatirajCeno(z.value)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
+        <VrhLestvice
+          naslov="Najboljši strelci sezone"
+          ikona="⚽"
+          znacka="bg-rose-400/15 text-rose-200"
+          kljuc="goals"
+          seznam={zvezde}
+        />
       </div>
+
+      {/* podajalci in obrambe — enak vzorec kot strelci, druga sezonska statistika */}
+      {(podajalci.length > 0 || obrambe.length > 0) && (
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <VrhLestvice
+            naslov="Najboljši podajalci sezone"
+            ikona="🅰️"
+            znacka="bg-gnl-400/15 text-gnl-200"
+            kljuc="assists"
+            seznam={podajalci}
+          />
+          <VrhLestvice
+            naslov="Največ ohranjenih mrež"
+            ikona="🧤"
+            znacka="bg-sky-400/15 text-sky-200"
+            kljuc="clean_sheets"
+            seznam={obrambe}
+          />
+        </div>
+      )}
 
       {/* idealna enajsterica zadnjega kroga — na igrišču */}
       {idealnaPostava.length > 0 && (
@@ -796,6 +816,48 @@ export default function Domov() {
         </div>
       </section>
     </div>
+  )
+}
+
+// Vrh sezonske lestvice po enem statu (goli, asistence, ohranjene mreže) —
+// isti vzorec za vse tri, da lestvice na prvi pogled izgledajo kot ena
+// družina, ne tri različne komponente.
+function VrhLestvice({ naslov, ikona, znacka, kljuc, seznam }) {
+  if (seznam.length === 0) return null
+  return (
+    <section className="space-y-3">
+      <h2 className="text-xl font-bold">{naslov}</h2>
+      <ul className="space-y-2">
+        {seznam.map((z, i) => (
+          <li
+            key={z.id}
+            className="kartica kartica-hover flex items-center gap-2 p-3 sm:gap-3"
+          >
+            <span className="w-6 text-center font-black text-slate-500">
+              {i + 1}
+            </span>
+            <Grb
+              ime={z.team_name}
+              kratko={z.team_short}
+              logo={z.team_logo}
+              velikost={22}
+            />
+            <Link
+              to={`/igralec/${z.id}`}
+              className="min-w-0 flex-1 truncate font-semibold hover:text-gnl-300"
+            >
+              {prikazniIme(z.full_name)}
+            </Link>
+            <span className={`znacka ${znacka}`}>
+              {z[kljuc]} {ikona}
+            </span>
+            <span className="w-20 text-right font-black tabular-nums text-gnl-300">
+              {formatirajCeno(z.value)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 

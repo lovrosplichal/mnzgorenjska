@@ -78,7 +78,12 @@ export default function Glasovanje() {
           .order('minute'),
         supabase
           .from('appearances')
-          .select('player_id, team_id, minutes_played, players(id, full_name, position)')
+          // shirt_number je iz TE tekme (zapisnika), ne s profila igralca —
+          // dres se med sezono lahko zamenja. Olajša iskanje pravega
+          // podajalca: "16 — Priimek Ime" je isti zapis kot v zapisniku.
+          .select(
+            'player_id, team_id, minutes_played, shirt_number, players(id, full_name, position)',
+          )
           .eq('match_id', tekmaId),
       ])
       if (preklican) return
@@ -392,6 +397,7 @@ export default function Glasovanje() {
                     i.player_id !== g.scorer?.id &&
                     i.minutes_played > 0,
                 )}
+                nastopi={igralci}
                 glasovi={glasovi[g.id] ?? []}
                 mojGlas={mojiGlasovi[g.id]}
                 omogoceno={Boolean(session)}

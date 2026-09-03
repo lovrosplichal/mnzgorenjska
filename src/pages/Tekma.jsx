@@ -268,6 +268,7 @@ export default function Tekma() {
                     n.player_id !== g.scorer?.id &&
                     n.minutes_played > 0,
                 )}
+                nastopi={nastopi}
                 glasovi={glasovi[g.id] ?? []}
                 mojGlas={mojiGlasovi[g.id]}
                 omogoceno={Boolean(session)}
