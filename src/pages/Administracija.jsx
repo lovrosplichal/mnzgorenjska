@@ -58,6 +58,7 @@ export default function Administracija() {
             )
             .eq('rounds.competition_id', tekmovanjeId)
             .not('import_warnings', 'eq', '{}')
+            .order('id', { ascending: false })
             .limit(50),
           supabase
             .from('players')
@@ -341,6 +342,7 @@ export default function Administracija() {
       .select('id, full_name, team_id, team_name, position, value, minutes, goals')
       .eq('competition_id', tekmovanjeId)
       .ilike('full_name', `%${iskanje.trim()}%`)
+      .order('full_name')
       .limit(15)
     setZadetki(data ?? [])
   }

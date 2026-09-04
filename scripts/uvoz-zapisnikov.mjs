@@ -130,7 +130,9 @@ async function igralecId(teamId, polnoIme, { vratar, st, dvoumno = false }) {
     .eq('full_name', polnoIme)
   if (dvoumno) poizvedba = poizvedba.eq('shirt_number', st)
 
-  let { data: zadetki } = await poizvedba.limit(1)
+  // `.order('id')` ni kozmetika: ce v bazi obstajata dve vrstici z istim
+  // imenom, bi brez njega vsak uvoz lahko pripel statistiko drugi od njiju.
+  let { data: zadetki } = await poizvedba.order('id').limit(1)
   let obstoj = zadetki?.[0]
 
   // Prestop med sezono: igralca s tem imenom pri tem klubu ni, imamo pa ga pri
