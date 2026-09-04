@@ -1,7 +1,7 @@
 // Grb kluba. Če klub nima logotipa, narišemo ščit z začetnicami — barva izhaja
 // iz imena, tako da ima vsak klub svojo in je enaka povsod v aplikaciji.
 
-const BARVE = [
+const BARVE: Array<[string, string]> = [
   ['#38bdf8', '#0c4a6e'],
   ['#34d399', '#065f46'],
   ['#fbbf24', '#78350f'],
@@ -14,13 +14,13 @@ const BARVE = [
   ['#fdba74', '#7c2d12'],
 ]
 
-function barvaKluba(ime = '') {
+function barvaKluba(ime = ''): [string, string] {
   let vsota = 0
   for (let i = 0; i < ime.length; i++) vsota = (vsota + ime.charCodeAt(i)) % 997
   return BARVE[vsota % BARVE.length]
 }
 
-function zacetnice(ime = '', kratko) {
+function zacetnice(ime = '', kratko?: string | null): string {
   if (kratko) return kratko.slice(0, 3).toUpperCase()
   return ime
     .split(/\s+/)
@@ -31,7 +31,19 @@ function zacetnice(ime = '', kratko) {
     .slice(0, 3)
 }
 
-export default function Grb({ ime, kratko, logo, velikost = 20, naslov }) {
+export default function Grb({
+  ime,
+  kratko,
+  logo,
+  velikost = 20,
+  naslov,
+}: {
+  ime?: string | null
+  kratko?: string | null
+  logo?: string | null
+  velikost?: number
+  naslov?: string | null
+}) {
   const opis = naslov ?? ime ?? 'klub'
 
   if (logo)
@@ -48,19 +60,19 @@ export default function Grb({ ime, kratko, logo, velikost = 20, naslov }) {
       />
     )
 
-  const [svetla, temna] = barvaKluba(ime)
-  const crke = zacetnice(ime, kratko)
+  const [svetla, temna] = barvaKluba(ime ?? '')
+  const crke = zacetnice(ime ?? '', kratko)
   return (
     <svg
       viewBox="0 0 32 36"
       width={velikost}
       height={velikost}
-      title={opis}
       aria-label={opis}
       role="img"
       className="shrink-0"
       style={{ width: velikost, height: velikost }}
     >
+      <title>{opis}</title>
       <path
         d="M2 2 H30 V20 C30 28 22 33 16 35 C10 33 2 28 2 20 Z"
         fill={temna}

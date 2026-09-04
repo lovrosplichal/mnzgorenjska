@@ -1,11 +1,26 @@
 // Prikaz idealne enajsterice na risanem igrišču. Podobno videzu Igrisca v
 // Moji ekipi, ampak le za pregled — brez interakcije, s točkami namesto cene.
+import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
 import { prikazniIme, formatirajTocke } from '../lib/pomozno'
+import { VRSTNI_RED } from '../lib/pravila'
+import type { Pozicija } from '../lib/tipi'
 import Grb from './Grb'
 import Dres from './Dres'
 
-function KarticaIgralca({ igralec }) {
+/** Igralec v idealni enajsterici; pogledi ga vrnejo z `player_id` ali `id`. */
+export interface IgralecEnajsterice {
+  id?: number | string
+  player_id?: number | string
+  full_name?: string | null
+  position?: Pozicija | null
+  points?: number | string | null
+  team_name?: string | null
+  team_short?: string | null
+  team_logo?: string | null
+}
+
+function KarticaIgralca({ igralec }: { igralec: IgralecEnajsterice }) {
   return (
     <Link
       to={`/igralec/${igralec.player_id ?? igralec.id}`}
@@ -30,14 +45,18 @@ function KarticaIgralca({ igralec }) {
   )
 }
 
-const Vrsta = ({ children }) => (
+const Vrsta = ({ children }: { children: ReactNode }) => (
   <div className="flex flex-wrap items-start justify-center gap-1.5 sm:gap-3">
     {children}
   </div>
 )
 
-export default function EnajstericaNaIgriscu({ igralci }) {
-  const vrste = {
+export default function EnajstericaNaIgriscu({
+  igralci,
+}: {
+  igralci: IgralecEnajsterice[]
+}) {
+  const vrste: Record<Pozicija, IgralecEnajsterice[]> = {
     GK: igralci.filter((i) => i.position === 'GK'),
     DEF: igralci.filter((i) => i.position === 'DEF'),
     MID: igralci.filter((i) => i.position === 'MID'),
@@ -53,7 +72,7 @@ export default function EnajstericaNaIgriscu({ igralci }) {
       <div className="pointer-events-none absolute bottom-2 left-1/2 h-14 w-14 -translate-x-1/2 translate-y-1/2 rounded-full border-2 border-white/20 sm:bottom-3 sm:h-20 sm:w-20" />
 
       <div className="relative space-y-3 py-2 sm:space-y-4 sm:py-4">
-        {['GK', 'DEF', 'MID', 'FWD'].map((koda) => (
+        {VRSTNI_RED.map((koda) => (
           <Vrsta key={koda}>
             {vrste[koda].map((i) => (
               <KarticaIgralca key={i.player_id ?? i.id} igralec={i} />

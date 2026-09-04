@@ -4,7 +4,12 @@ import { useAuth } from '../lib/useAuth'
 import { useTekmovanje } from '../lib/tekmovanje'
 import { supabase } from '../lib/supabase'
 
-const povezave = [
+interface Povezava {
+  pot: string
+  naslov: string
+}
+
+const povezave: Povezava[] = [
   { pot: '/', naslov: 'Domov' },
   { pot: '/moja-ekipa', naslov: 'Moja ekipa' },
   { pot: '/glasovanje', naslov: 'Asistence' },
@@ -78,7 +83,11 @@ export default function Navbar() {
       )
       .then(({ data }) => {
         setCakaGlasov(
-          (data ?? []).reduce((v, x) => v + Number(x.brez_asistence ?? 0), 0),
+          (data ?? []).reduce(
+            (v: number, x: { brez_asistence?: number | null }) =>
+              v + Number(x.brez_asistence ?? 0),
+            0,
+          ),
         )
       })
   }, [tekmovanjeId])
@@ -100,7 +109,7 @@ export default function Navbar() {
     ? [...povezave, { pot: '/admin', naslov: 'Admin' }]
     : povezave
 
-  const slog = ({ isActive }) =>
+  const slog = ({ isActive }: { isActive: boolean }) =>
     isActive
       ? 'rounded-lg bg-white/10 px-3 py-1.5 font-semibold text-gnl-300'
       : 'rounded-lg px-3 py-1.5 text-slate-400 hover:bg-white/5 hover:text-slate-100'

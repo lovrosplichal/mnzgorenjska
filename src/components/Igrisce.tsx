@@ -11,10 +11,32 @@ import {
   prikazniIme,
   formatirajCeno,
 } from '../lib/pomozno'
+import type { ReactNode } from 'react'
+import type { IgralecVKadru, Pozicija } from '../lib/tipi'
 import Grb from './Grb'
 import Dres from './Dres'
 
-function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
+/** Igralec na igriscu — kader plus polja, ki jih potrebuje prikaz. */
+export interface IgralecNaIgriscu extends IgralecVKadru {
+  id: number | string
+  full_name?: string | null
+  team_name?: string | null
+  team_short?: string | null
+  team_logo?: string | null
+  tocke_krog?: number | null
+}
+
+function KarticaIgralca({
+  igralec,
+  naKlik,
+  naOdstrani,
+  zatemnjen,
+}: {
+  igralec: IgralecNaIgriscu
+  naKlik: () => void
+  naOdstrani: () => void
+  zatemnjen?: boolean
+}) {
   return (
     <div
       className={`group relative w-[3.4rem] text-center sm:w-[4.75rem] ${
@@ -93,7 +115,13 @@ function KarticaIgralca({ igralec, naKlik, naOdstrani, zatemnjen }) {
   )
 }
 
-function PraznoMesto({ pozicija, naKlik }) {
+function PraznoMesto({
+  pozicija,
+  naKlik,
+}: {
+  pozicija: Pozicija
+  naKlik: (p: Pozicija) => void
+}) {
   return (
     <button
       onClick={() => naKlik(pozicija)}
@@ -111,7 +139,7 @@ function PraznoMesto({ pozicija, naKlik }) {
   )
 }
 
-const Vrsta = ({ children }) => (
+const Vrsta = ({ children }: { children: ReactNode }) => (
   <div className="flex flex-wrap items-start justify-center gap-1.5 sm:gap-3">
     {children}
   </div>
@@ -122,6 +150,11 @@ export default function Igrisce({
   naPreklopPrvo,
   naOdstrani,
   naPraznoMesto,
+}: {
+  izbrani: IgralecNaIgriscu[]
+  naPreklopPrvo: (i: IgralecNaIgriscu) => void
+  naOdstrani: (i: IgralecNaIgriscu) => void
+  naPraznoMesto: (p: Pozicija) => void
 }) {
   const prvi = izbrani.filter((i) => i.is_starter && i.position)
   const klop = izbrani.filter((i) => !i.is_starter && i.position)
@@ -129,8 +162,8 @@ export default function Igrisce({
 
   // Prazna mesta razporedimo tako, da igrišče pokaže privzeto postavo
   // (1-4-4-2), preostanek kadra pa pristane na klopi.
-  const manjka = {}
-  const naIgriscu = {}
+  const manjka = {} as Record<Pozicija, number>
+  const naIgriscu = {} as Record<Pozicija, number>
   for (const koda of VRSTNI_RED) {
     const vKadru = izbrani.filter((i) => i.position === koda).length
     manjka[koda] = Math.max(0, POZICIJE[koda].kader - vKadru)

@@ -9,6 +9,40 @@
 //   - gol je bil iz enajstmetrovke ali avtogol — asistence po pravilih ni.
 import { useState } from 'react'
 import { prikazniIme, razredPozicije, KRATKA_POZICIJA } from '../lib/pomozno'
+import type { Pozicija } from '../lib/tipi'
+
+/** Gol, o katerem skupnost glasuje o asistenci. */
+export interface Gol {
+  id: number
+  minute?: number | null
+  team_id?: number | null
+  is_own_goal?: boolean | null
+  is_penalty?: boolean | null
+  assist_player_id?: number | null
+  score_home?: number | null
+  score_away?: number | null
+  scorer?: { id?: number | null; full_name?: string | null } | null
+  assist?: { full_name?: string | null } | null
+}
+
+export interface Tekma {
+  home_team_id?: number | null
+  home_name?: string | null
+  away_name?: string | null
+}
+
+/** Nastop na tekmi — kandidat za asistenco. */
+export interface Kandidat {
+  player_id: number
+  shirt_number?: number | null
+  players?: { full_name?: string | null; position?: Pozicija | null } | null
+}
+
+/** Seštevek glasov za enega kandidata; `player_id: null` pomeni "brez asistence". */
+export interface Glas {
+  player_id: number | null
+  votes: number
+}
 
 export const PRAG_ASISTENCE = 3
 
@@ -17,7 +51,7 @@ export const PRAG_ASISTENCE = 3
  * (dres se med sezono lahko zamenja). Enak podpis kot v zapisniku ("16 —
  * Priimek Ime"), da je iskanje pravega podajalca na igrišču hitrejše.
  */
-function StDres({ st }) {
+function StDres({ st }: { st?: number | null }) {
   if (st == null) return null
   return (
     <span className="znacka shrink-0 bg-white/10 font-mono tabular-nums text-slate-400">
@@ -27,10 +61,12 @@ function StDres({ st }) {
 }
 
 /** Ali gol sploh lahko dobi asistenco. */
-export const lahkoImaAsistenco = (gol) => !gol.is_own_goal && !gol.is_penalty
+export const lahkoImaAsistenco = (gol: Gol) => !gol.is_own_goal && !gol.is_penalty
 
 /** Ali je skupnost odločila, da gol nima asistence. */
-export const brezAsistencePotrjeno = (gol, glasovi = []) => {
+// `_gol` se ne bere — odlocijo samo glasovi. Parameter ostaja zaradi klicnih
+// mest, ki ga podajajo, in ker je simetricen z `lahkoImaAsistenco(gol)`.
+export const brezAsistencePotrjeno = (_gol: Gol, glasovi: Glas[] = []) => {
   const vodilni = glasovi[0]
   return Boolean(
     vodilni && vodilni.player_id == null && vodilni.votes >= PRAG_ASISTENCE,
@@ -38,12 +74,22 @@ export const brezAsistencePotrjeno = (gol, glasovi = []) => {
 }
 
 /** Ali gol še čaka na odločitev skupnosti. */
-export const caka = (gol, glasovi = []) =>
+export const caka = (gol: Gol, glasovi: Glas[] = []) =>
   lahkoImaAsistenco(gol) &&
   !gol.assist_player_id &&
   !brezAsistencePotrjeno(gol, glasovi)
 
-function Zakljucek({ gol, ikona, besedilo, opomba }) {
+function Zakljucek({
+  gol,
+  ikona,
+  besedilo,
+  opomba,
+}: {
+  gol: Gol
+  ikona: string
+  besedilo: string
+  opomba: string
+}) {
   return (
     <li className="kartica p-4 opacity-70">
       <div className="flex flex-wrap items-center gap-3">
@@ -70,18 +116,30 @@ export default function GolZaGlasovanje({
   omogoceno,
   pravkar,
   onGlasuj,
+}: {
+  gol: Gol
+  tekma?: Tekma | null
+  kandidati: Kandidat[]
+  nastopi?: Kandidat[]
+  glasovi?: Glas[]
+  mojGlas?: number | null
+  omogoceno?: boolean
+  pravkar?: boolean
+  onGlasuj: (golId: number, playerId: number | null) => void
 }) {
   const [odprto, setOdprto] = useState(false)
   const potrjeno = Boolean(gol.assist_player_id)
-  const stGlasov = Object.fromEntries(glasovi.map((v) => [v.player_id, v.votes]))
+  const stGlasov: Record<string, number> = Object.fromEntries(
+    glasovi.map((v) => [String(v.player_id), v.votes]),
+  )
   const vodilni = glasovi[0]
   const brezAsistence = brezAsistencePotrjeno(gol, glasovi)
   const zakljuceno = potrjeno || brezAsistence
 
   // Strelec je iz `kandidati` izločen (nihče si ne da asistence), zato
   // njegovo številko poiščemo v vseh nastopih tekme, ne v seznamu kandidatov.
-  const stDresa = Object.fromEntries(
-    (nastopi ?? []).map((n) => [n.player_id, n.shirt_number]),
+  const stDresa: Record<string, number | null | undefined> = Object.fromEntries(
+    (nastopi ?? []).map((n) => [String(n.player_id), n.shirt_number]),
   )
 
   const domaci = gol.team_id === tekma?.home_team_id
@@ -122,7 +180,7 @@ export default function GolZaGlasovanje({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-lg">⚽</span>
-            <StDres st={stDresa[gol.scorer?.id]} />
+            <StDres st={stDresa[String(gol.scorer?.id)]} />
             <strong className="truncate">{ime}</strong>
           </div>
           <div className="text-xs text-slate-500">
@@ -135,7 +193,7 @@ export default function GolZaGlasovanje({
             <span>🅰️</span>
             <div className="text-sm">
               <div className="flex items-center gap-1.5 font-bold text-gnl-200">
-                <StDres st={stDresa[gol.assist_player_id]} />
+                <StDres st={stDresa[String(gol.assist_player_id)]} />
                 {prikazniIme(gol.assist?.full_name)}
               </div>
               <div className="text-xs text-gnl-400/80">
@@ -178,8 +236,8 @@ export default function GolZaGlasovanje({
                 <>
                   Vodi{' '}
                   <strong className="text-gnl-200">
-                    {stDresa[vodilni.player_id] != null &&
-                      `${stDresa[vodilni.player_id]} — `}
+                    {stDresa[String(vodilni.player_id)] != null &&
+                      `${stDresa[String(vodilni.player_id)]} — `}
                     {prikazniIme(
                       kandidati.find((k) => k.player_id === vodilni.player_id)
                         ?.players?.full_name,
@@ -212,8 +270,8 @@ export default function GolZaGlasovanje({
                   g.player_id == null
                     ? `brez (${g.votes})`
                     : `${
-                        stDresa[g.player_id] != null
-                          ? `${stDresa[g.player_id]} — `
+                        stDresa[String(g.player_id)] != null
+                          ? `${stDresa[String(g.player_id)]} — `
                           : ''
                       }${
                         prikazniIme(
@@ -236,7 +294,7 @@ export default function GolZaGlasovanje({
           <div className="grid gap-2 sm:grid-cols-2">
             {kandidati.map((k) => {
               const izbran = mojGlas === k.player_id
-              const n = stGlasov[k.player_id] ?? 0
+              const n = stGlasov[String(k.player_id)] ?? 0
               return (
                 <button
                   key={k.player_id}
@@ -249,7 +307,7 @@ export default function GolZaGlasovanje({
                 >
                   <StDres st={k.shirt_number} />
                   <span className={`znacka shrink-0 ${razredPozicije(k.players?.position)}`}>
-                    {KRATKA_POZICIJA[k.players?.position] ?? '?'}
+                    {(k.players?.position && KRATKA_POZICIJA[k.players.position]) ?? '?'}
                   </span>
                   <span className="min-w-0 flex-1 truncate">
                     {prikazniIme(k.players?.full_name)}

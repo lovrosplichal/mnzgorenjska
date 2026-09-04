@@ -1,15 +1,27 @@
 // Dres v barvi pozicije. Isti znak nosita igrišče pri sestavi ekipe in igrišče
 // s točkami ob rezultatu tekme, zato živi v svoji datoteki.
 
-const BARVA_DRESA = {
+import type { Pozicija } from '../lib/tipi'
+
+const BARVA_DRESA: Record<Pozicija, { dres: string; rokav: string }> = {
   GK: { dres: '#fbbf24', rokav: '#d97706' },
   DEF: { dres: '#38bdf8', rokav: '#0284c7' },
   MID: { dres: '#34d399', rokav: '#059669' },
   FWD: { dres: '#fb7185', rokav: '#e11d48' },
 }
 
-export default function Dres({ pozicija, razred = 'h-7 w-8 sm:h-9 sm:w-10' }) {
-  const barva = BARVA_DRESA[pozicija] ?? { dres: '#94a3b8', rokav: '#475569' }
+export default function Dres({
+  pozicija,
+  razred = 'h-7 w-8 sm:h-9 sm:w-10',
+}: {
+  pozicija?: Pozicija | null
+  razred?: string
+}) {
+  const barva =
+    (pozicija ? BARVA_DRESA[pozicija] : undefined) ?? {
+      dres: '#94a3b8',
+      rokav: '#475569',
+    }
   return (
     <svg
       viewBox="0 0 48 44"

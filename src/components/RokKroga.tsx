@@ -3,6 +3,14 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTekmovanje } from '../lib/tekmovanje'
 
+/** Vrstica pogleda `naslednji_krog` — prvi krog, ki se še ni zaklenil. */
+interface NaslednjiKrog {
+  number: number
+  season: string
+  played_on: string | null
+  deadline_at: string | null
+}
+
 /**
  * Pas nad glavo strani z odštevanjem do naslednjega zaklepa.
  *
@@ -12,7 +20,7 @@ import { useTekmovanje } from '../lib/tekmovanje'
  * Zadnjo uro odšteva po sekundah, prej po minutah — sekundna natančnost je
  * takrat, ko je res pomembna, sicer pa bi le po nepotrebnem risala.
  */
-function razdeli(ms) {
+function razdeli(ms: number) {
   const d = Math.floor(ms / 86400000)
   const h = Math.floor((ms % 86400000) / 3600000)
   const m = Math.floor((ms % 3600000) / 60000)
@@ -20,7 +28,7 @@ function razdeli(ms) {
   return { d, h, m, s }
 }
 
-function niz(ms) {
+function niz(ms: number) {
   const { d, h, m, s } = razdeli(ms)
   if (d > 0) return `${d} d ${h} h`
   if (h > 0) return `${h} h ${m} min`
@@ -30,7 +38,7 @@ function niz(ms) {
 
 export default function RokKroga() {
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
-  const [krog, setKrog] = useState(null)
+  const [krog, setKrog] = useState<NaslednjiKrog | null>(null)
   const [zdaj, setZdaj] = useState(() => Date.now())
   // Ko rok poteče, je "naslednji krog" že drug — osvežimo, da pas ne obtiči
   // na zaklenjenem, dokler kdo ne naloži strani znova.
@@ -45,7 +53,7 @@ export default function RokKroga() {
       .eq('competition_id', tekmovanjeId)
       .maybeSingle()
       .then(({ data }) => {
-        if (!odjava) setKrog(data ?? null)
+        if (!odjava) setKrog((data as NaslednjiKrog | null) ?? null)
       })
     return () => {
       odjava = true

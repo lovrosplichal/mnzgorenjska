@@ -7,12 +7,40 @@
 import { Link } from 'react-router-dom'
 import { VRSTNI_RED } from '../lib/pravila'
 import { prikazniIme, formatirajTocke } from '../lib/pomozno'
+import type { ReactNode } from 'react'
+import type { Pozicija } from '../lib/tipi'
 import Dres from './Dres'
 import Grb from './Grb'
 
+/** Nastop igralca na tekmi, kot ga vrne pogled `appearance_points`. */
+export interface NastopNaTekmi {
+  player_id: number | string
+  full_name?: string | null
+  position?: Pozicija | null
+  started?: boolean | null
+  minutes_played?: number | null
+  points?: number | string | null
+  goals?: number | null
+  assists?: number | null
+  own_goals?: number | null
+  penalties_saved?: number | null
+  penalties_missed?: number | null
+  yellow_cards?: number | null
+  red_cards?: number | null
+  goals_conceded?: number | null
+  clean_sheet?: boolean | null
+}
+
+/** Klub, ki mu pripada ta polovica igrišča. */
+export interface EkipaNaIgriscu {
+  ime?: string | null
+  kratko?: string | null
+  logo?: string | null
+}
+
 /** Drobne ikone dogodkov pod dresom — kar je pripeljalo do točk. */
-function dogodki(n) {
-  const z = []
+function dogodki(n: NastopNaTekmi): string[] {
+  const z: string[] = []
   for (let i = 0; i < Number(n.goals ?? 0); i++) z.push('⚽')
   for (let i = 0; i < Number(n.assists ?? 0); i++) z.push('🅰️')
   for (let i = 0; i < Number(n.own_goals ?? 0); i++) z.push('🙈')
@@ -23,18 +51,24 @@ function dogodki(n) {
   return z
 }
 
-function opisNastopa(n) {
+function opisNastopa(n: NastopNaTekmi): string {
   const deli = [`${n.minutes_played} min`]
   if (Number(n.goals ?? 0) > 0) deli.push(`${n.goals} × gol`)
   if (Number(n.assists ?? 0) > 0) deli.push(`${n.assists} × asistenca`)
-  if (n.clean_sheet && n.minutes_played >= 60) deli.push('brez prejetega gola')
+  if (n.clean_sheet && Number(n.minutes_played ?? 0) >= 60) deli.push('brez prejetega gola')
   if (Number(n.goals_conceded ?? 0) > 0) deli.push(`prejetih ${n.goals_conceded}`)
   if (Number(n.yellow_cards ?? 0) > 0) deli.push('rumeni karton')
   if (Number(n.red_cards ?? 0) > 0) deli.push('rdeči karton')
   return `${prikazniIme(n.full_name)} — ${deli.join(', ')}`
 }
 
-function Kartica({ nastop, zatemnjen }) {
+function Kartica({
+  nastop,
+  zatemnjen,
+}: {
+  nastop: NastopNaTekmi
+  zatemnjen?: boolean
+}) {
   const tocke = Number(nastop.points ?? 0)
   const znaki = dogodki(nastop)
   return (
@@ -72,13 +106,19 @@ function Kartica({ nastop, zatemnjen }) {
   )
 }
 
-const Vrsta = ({ children }) => (
+const Vrsta = ({ children }: { children: ReactNode }) => (
   <div className="flex flex-wrap items-start justify-center gap-1.5 lg:gap-2.5">
     {children}
   </div>
 )
 
-export default function IgrisceTocke({ ekipa, nastopi }) {
+export default function IgrisceTocke({
+  ekipa,
+  nastopi,
+}: {
+  ekipa: EkipaNaIgriscu
+  nastopi: NastopNaTekmi[]
+}) {
   const prvi = nastopi.filter((n) => n.started)
   const menjave = nastopi.filter((n) => !n.started)
   const igrale = menjave.filter((n) => Number(n.minutes_played ?? 0) > 0)
@@ -88,7 +128,9 @@ export default function IgrisceTocke({ ekipa, nastopi }) {
   // Postava iz zapisnika je poljubna; kdor nima potrjene pozicije, gre v
   // zadnjo vrsto, da se z igrišča nihče ne izgubi.
   const vrste = VRSTNI_RED.map((koda) => prvi.filter((n) => n.position === koda))
-  const brezPozicije = prvi.filter((n) => !VRSTNI_RED.includes(n.position))
+  const brezPozicije = prvi.filter(
+    (n) => !n.position || !VRSTNI_RED.includes(n.position),
+  )
 
   return (
     <div className="space-y-2">

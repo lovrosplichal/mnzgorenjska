@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 import { useTekmovanje } from '../lib/tekmovanje'
 import { preveriEkipo } from '../lib/pravila'
+import type { IgralecVKadru } from '../lib/tipi'
 
 /**
  * Stalen pas nad glavno vsebino — dokler ekipa ni sestavljena in veljavna,
@@ -18,8 +19,9 @@ export default function OpozoriloEkipe() {
   const { session, loading } = useAuth()
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const { pathname } = useLocation()
-  const [napake, setNapake] = useState(null)
-  const [imaEkipo, setImaEkipo] = useState(null) // null=še ne vem, true/false po poizvedbi
+  const [napake, setNapake] = useState<string[] | null>(null)
+  // null = še ne vem, true/false po poizvedbi
+  const [imaEkipo, setImaEkipo] = useState<boolean | null>(null)
   const [nalaganje, setNalaganje] = useState(true)
 
   useEffect(() => {
@@ -28,6 +30,12 @@ export default function OpozoriloEkipe() {
       setNalaganje(false)
       return
     }
+    // Vrednosti ujamemo tu, ne v zaprtju spodaj: `session` in `tekmovanjeId`
+    // sta preverjena zgoraj, znotraj async funkcije pa bi ju TypeScript spet
+    // videl kot morda prazna — in ob spremembi bi zaprtje res bralo staro.
+    const uporabnikId = session.user.id
+    const ligaId = tekmovanjeId
+
     let odjava = false
     async function preveri() {
       setNalaganje(true)
@@ -35,8 +43,8 @@ export default function OpozoriloEkipe() {
       const { data: ekipa } = await supabase
         .from('fantasy_teams')
         .select('id, name')
-        .eq('owner_id', session.user.id)
-        .eq('competition_id', tekmovanjeId)
+        .eq('owner_id', uporabnikId)
+        .eq('competition_id', ligaId)
         .maybeSingle()
       if (odjava) return
       if (!ekipa) {
@@ -54,8 +62,8 @@ export default function OpozoriloEkipe() {
         )
         .eq('fantasy_team_id', ekipa.id)
       if (odjava) return
-      const izbrani = (roster ?? [])
-        .map((r) => ({
+      const izbrani: IgralecVKadru[] = (roster ?? [])
+        .map((r: any) => ({
           is_starter: r.is_starter,
           is_captain: r.is_captain,
           is_vice: r.is_vice,

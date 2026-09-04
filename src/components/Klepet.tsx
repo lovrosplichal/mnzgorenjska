@@ -1,11 +1,21 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import type { FormEvent } from 'react'
 import { useAuth } from '../lib/useAuth'
 
 // Anonimni klepet — sporočila so javna, avtor pa skrit za psevdonimom, ki se
 // deterministično izpelje iz user_id, tako da ista oseba vedno "govori" kot
 // isti psevdonim (npr. "Modri Napadalec 42"). Prijavljen mora biti, da lahko
 // objavi (proti spam-u), a njegovega imena nihče ne vidi.
+
+/** Sporocilo v klepetu — vrstica tabele `chat_messages`. */
+export interface Sporocilo {
+  id: number
+  user_id: string
+  content: string
+  alias: string
+  created_at: string
+}
 
 const PRIDEVNIKI = [
   'Modri', 'Rdeči', 'Zeleni', 'Rumeni', 'Črni', 'Beli', 'Srebrni', 'Zlati',
@@ -18,13 +28,13 @@ const SAMOSTALNIKI = [
   'Orel', 'Zmaj', 'Bik', 'Konj', 'Sokol', 'Ris',
 ]
 
-function stringHash(s) {
+function stringHash(s: string): number {
   let h = 5381
   for (let i = 0; i < s.length; i++) h = (h * 33) ^ s.charCodeAt(i)
   return Math.abs(h)
 }
 
-export function psevdonim(userId) {
+export function psevdonim(userId?: string | null): string {
   if (!userId) return 'Gost'
   const h = stringHash(userId)
   const p = PRIDEVNIKI[h % PRIDEVNIKI.length]
@@ -33,7 +43,7 @@ export function psevdonim(userId) {
   return `${p} ${s} ${st}`
 }
 
-function relativniCas(iso) {
+function relativniCas(iso: string): string {
   const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000)
   if (s < 60) return 'zdaj'
   if (s < 3600) return `${Math.floor(s / 60)} min`
@@ -47,10 +57,10 @@ function relativniCas(iso) {
 
 export default function Klepet() {
   const { session } = useAuth()
-  const [sporocila, setSporocila] = useState([])
+  const [sporocila, setSporocila] = useState<Sporocilo[]>([])
   const [besedilo, setBesedilo] = useState('')
   const [posiljam, setPosiljam] = useState(false)
-  const [napaka, setNapaka] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
   const mojPsev = psevdonim(session?.user?.id)
 
   useEffect(() => {
@@ -63,7 +73,7 @@ export default function Klepet() {
         .limit(30)
       if (preklican) return
       if (error) setNapaka(error.message)
-      else setSporocila((data ?? []).reverse())
+      else setSporocila(((data ?? []) as Sporocilo[]).slice().reverse())
     }
     nalozi()
     // Vsakih 20 s osveži — realtime bi bil boljši, a to zadošča za začetek.
@@ -74,7 +84,7 @@ export default function Klepet() {
     }
   }, [])
 
-  async function posljem(e) {
+  async function posljem(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!session) return setNapaka('Za objavo se moraš prijaviti.')
     const t = besedilo.trim()
@@ -90,11 +100,11 @@ export default function Klepet() {
       .single()
     setPosiljam(false)
     if (error) return setNapaka(error.message)
-    setSporocila([...sporocila, data])
+    if (data) setSporocila([...sporocila, data as Sporocilo])
     setBesedilo('')
   }
 
-  async function izbrisi(id) {
+  async function izbrisi(id: number) {
     if (!confirm('Izbrišem sporočilo?')) return
     const { error } = await supabase.from('chat_messages').delete().eq('id', id)
     if (error) return setNapaka(error.message)
