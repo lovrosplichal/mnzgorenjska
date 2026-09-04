@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import type { Pozicija } from '../lib/tipi'
 import { useAuth } from '../lib/useAuth'
 import { prikazniIme, IME_POZICIJE, formatirajTocke, formatirajCeno } from '../lib/pomozno'
 import { POZICIJE, VELIKOST_EKIPE, STEVILO_PRVIH, MAX_IZ_KLUBA, VRSTNI_RED, poPozicijah } from '../lib/pravila'
@@ -10,23 +11,21 @@ export default function Administracija() {
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
   const [jeAdmin, setJeAdmin] = useState(false)
   const [nalaganje, setNalaganje] = useState(true)
-  const [opozorila, setOpozorila] = useState([])
-  const [brezPozicije, setBrezPozicije] = useState(0)
-  const [brezAsistence, setBrezAsistence] = useState(0)
-  const [krogi, setKrogi] = useState([])
-  const [sporocilo, setSporocilo] = useState(null)
-  const [napaka, setNapaka] = useState(null)
+  const [opozorila, setOpozorila] = useState<any[]>([])
+  const [krogi, setKrogi] = useState<any[]>([])
+  const [sporocilo, setSporocilo] = useState<string | null>(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
   const [iskanje, setIskanje] = useState('')
-  const [zadetki, setZadetki] = useState([])
-  const [klubi, setKlubi] = useState([])
-  const [ekipe, setEkipe] = useState([])
-  const [uporabniki, setUporabniki] = useState([])
+  const [zadetki, setZadetki] = useState<any[]>([])
+  const [klubi, setKlubi] = useState<any[]>([])
+  const [ekipe, setEkipe] = useState<any[]>([])
+  const [uporabniki, setUporabniki] = useState<any[]>([])
   const [filterNepopolne, setFilterNepopolne] = useState(false)
-  const [urediEkipa, setUrediEkipa] = useState(null) // { id, name }
-  const [urediUporabnik, setUrediUporabnik] = useState(null) // { user_id, display_name }
+  const [urediEkipa, setUrediEkipa] = useState<any | null>(null)
+  const [urediUporabnik, setUrediUporabnik] = useState<any | null>(null)
   const [kopirano, setKopirano] = useState(false)
   const [posiljam, setPosiljam] = useState(false)
-  const [logMailov, setLogMailov] = useState([])
+  const [logMailov, setLogMailov] = useState<any[]>([])
   // Pošiljanje je bilo skrito za window.prompt/window.confirm. Na telefonu
   // ju brskalnik pogosto ne pokaže, na namizju pa ju po nekaj oknih ponudi
   // blokirati — koda je nato tiho ne naredila nič: brez zahteve, brez napake.
@@ -40,57 +39,49 @@ export default function Administracija() {
       setNalaganje(false)
       return
     }
+    const uporabnikId = session.user.id
     async function init() {
       const { data: profil } = await supabase
         .from('profiles')
         .select('is_admin')
-        .eq('id', session.user.id)
+        .eq('id', uporabnikId)
         .maybeSingle()
       const admin = Boolean(profil?.is_admin)
       setJeAdmin(admin)
 
       if (admin) {
-        const [tekme, bp, ba, kr, kl] = await Promise.all([
+        const [tekme, kr, kl] = await Promise.all([
           supabase
             .from('matches')
             .select(
               'id, zapisnik_id, source_url, import_warnings, rounds!inner(competition_id)',
             )
-            .eq('rounds.competition_id', tekmovanjeId)
+            .eq('rounds.competition_id', tekmovanjeId as number)
             .not('import_warnings', 'eq', '{}')
             .order('id', { ascending: false })
             .limit(50),
           supabase
-            .from('players')
-            .select('id', { count: 'exact', head: true })
-            .eq('competition_id', tekmovanjeId)
-            .is('position', null),
-          supabase
-            .from('goals')
-            .select('id, matches!inner(rounds!inner(competition_id))', {
-              count: 'exact',
-              head: true,
-            })
-            .eq('matches.rounds.competition_id', tekmovanjeId)
-            .is('assist_player_id', null)
-            .eq('is_own_goal', false),
-          supabase
             .from('rounds')
             .select('id, season, number')
-            .eq('competition_id', tekmovanjeId)
+            .eq('competition_id', tekmovanjeId as number)
             .order('season')
             .order('number'),
           supabase
             .from('competition_teams')
             .select('team_id, name')
-            .eq('competition_id', tekmovanjeId)
+            .eq('competition_id', tekmovanjeId as number)
             .order('name'),
         ])
-        setOpozorila((tekme.data ?? []).filter((t) => t.import_warnings?.length))
-        setBrezPozicije(bp.count ?? 0)
-        setBrezAsistence(ba.count ?? 0)
-        setKrogi(kr.data ?? [])
-        setKlubi((kl.data ?? []).map((k) => ({ id: k.team_id, name: k.name })))
+        setOpozorila(
+          ((tekme.data ?? []) as any[]).filter((t) => t.import_warnings?.length),
+        )
+        setKrogi((kr.data ?? []) as any[])
+        setKlubi(
+          ((kl.data ?? []) as any[]).map((k) => ({
+            id: k.team_id,
+            name: k.name,
+          })),
+        )
 
         // Vse fantasy ekipe s celo rostersko sliko za sanity-check.
         await naloziEkipe()
@@ -103,14 +94,14 @@ export default function Administracija() {
 
   async function naloziUporabnike() {
     const { data, error } = await supabase.rpc('admin_uporabniki', {
-      p_competition_id: tekmovanjeId,
+      p_competition_id: tekmovanjeId ?? undefined,
     })
     if (error) return setNapaka(error.message)
-    setUporabniki(data ?? [])
+    setUporabniki((data ?? []) as any[])
     const { data: log } = await supabase
       .from('email_log')
       .select('id, email, vrsta, poslano_at, napaka')
-      .eq('competition_id', tekmovanjeId)
+      .eq('competition_id', tekmovanjeId as number)
       .order('poslano_at', { ascending: false })
       .limit(20)
     setLogMailov(log ?? [])
@@ -133,13 +124,13 @@ export default function Administracija() {
       )
       await naloziUporabnike()
     } catch (e) {
-      setNapaka(`Pošiljanje ni uspelo: ${e.message ?? e}`)
+      setNapaka(`Pošiljanje ni uspelo: ${(e as Error)?.message ?? e}`)
     } finally {
       setPosiljam(false)
     }
   }
 
-  async function posljiTestniMail(naslov) {
+  async function posljiTestniMail(naslov: string) {
     if (!naslov?.trim()) {
       setSporocilo(null)
       return setNapaka('Vpiši naslov, na katerega naj gre testni mail.')
@@ -156,13 +147,13 @@ export default function Administracija() {
       if (r?.napaka) throw new Error(r.napaka)
       setSporocilo(`Test mail poslan na ${naslov}. Resend ID: ${r?.id ?? '—'}`)
     } catch (e) {
-      setNapaka(`Test ni uspel: ${e.message ?? e}`)
+      setNapaka(`Test ni uspel: ${(e as Error)?.message ?? e}`)
     } finally {
       setPosiljam(false)
     }
   }
 
-  async function preimenujEkipo(id, novo) {
+  async function preimenujEkipo(id: number, novo: string) {
     setNapaka(null)
     const { error } = await supabase
       .from('fantasy_teams')
@@ -175,7 +166,7 @@ export default function Administracija() {
     await naloziUporabnike()
   }
 
-  async function preimenujUporabnika(user_id, novo) {
+  async function preimenujUporabnika(user_id: string, novo: string) {
     setNapaka(null)
     const { error } = await supabase
       .from('profiles')
@@ -188,7 +179,7 @@ export default function Administracija() {
     await naloziUporabnike()
   }
 
-  async function kopirajEmaile(seznam) {
+  async function kopirajEmaile(seznam: any[]) {
     const emaili = seznam.map((u) => u.email).filter(Boolean).join(', ')
     try {
       await navigator.clipboard.writeText(emaili)
@@ -200,7 +191,7 @@ export default function Administracija() {
     }
   }
 
-  function mailtoNepopolnim(seznam) {
+  function mailtoNepopolnim(seznam: any[]) {
     const emaili = seznam.map((u) => u.email).filter(Boolean).join(',')
     const zadeva = encodeURIComponent(
       `SLFF ${tekmovanje?.short_name ?? ''} — dokončaj ekipo pred naslednjim krogom`,
@@ -215,7 +206,7 @@ export default function Administracija() {
   // preprosto odreže. Ekipe, ki so padle čez rob, so se na strani prikazale
   // brez enega samega igralca. Kadrov je čez obe ligi že 1324, zato jih
   // beremo po straneh in nikoli ne verjamemo, da je ena zahteva dovolj.
-  async function vsiKadri(tekmovanje) {
+  async function vsiKadri(tekmovanje: any) {
     const STRAN = 1000
     const vse = []
     for (let od = 0; ; od += STRAN) {
@@ -245,12 +236,12 @@ export default function Administracija() {
         supabase
           .from('fantasy_team_wealth')
           .select('fantasy_team_id, name, starting_budget, cash, roster_value, total_wealth')
-          .eq('competition_id', tekmovanjeId)
+          .eq('competition_id', tekmovanjeId as number)
           .order('total_wealth', { ascending: false }),
         supabase
           .from('fantasy_teams')
           .select('id, owner_id, profiles(display_name)')
-          .eq('competition_id', tekmovanjeId),
+          .eq('competition_id', tekmovanjeId as number),
         vsiKadri(tekmovanjeId),
       ])
     const podrostri = new Map()
@@ -269,22 +260,22 @@ export default function Administracija() {
       const roster = podrostri.get(w.fantasy_team_id) ?? []
       // Kvoto sodi mesto ob nakupu, enako kot baza — sicer bi administracija
       // označila za neveljavne kadre, ki so v resnici v redu.
-      const kader = roster
-        .map((r) =>
+      const kader = (roster as any[])
+        .map((r: any) =>
           r.players
             ? { ...r.players, position: r.buy_position ?? r.players.position }
             : null,
         )
-        .filter(Boolean)
+        .filter(Boolean) as any[]
       const napake = validacijaRosterja(roster, kader)
       return {
         ...w,
-        owner: lastniki[w.fantasy_team_id] ?? '?',
+        owner: lastniki[String(w.fantasy_team_id)] ?? '?',
         stIgralcev: roster.length,
-        stStarterjev: roster.filter((r) => r.is_starter).length,
-        stKapetanov: roster.filter((r) => r.is_captain).length,
-        stNamestnikov: roster.filter((r) => r.is_vice).length,
-        stNeaktivnih: kader.filter((p) => !p.active).length,
+        stStarterjev: (roster as any[]).filter((r: any) => r.is_starter).length,
+        stKapetanov: (roster as any[]).filter((r: any) => r.is_captain).length,
+        stNamestnikov: (roster as any[]).filter((r: any) => r.is_vice).length,
+        stNeaktivnih: kader.filter((p: any) => !p.active).length,
         kaderPoPoz: poPozicijah(kader),
         roster,
         napake,
@@ -293,7 +284,7 @@ export default function Administracija() {
     setEkipe(napolnjene)
   }
 
-  function validacijaRosterja(roster, kader) {
+  function validacijaRosterja(roster: any[], kader: any[]) {
     const napake = []
     if (roster.length !== VELIKOST_EKIPE)
       napake.push(`kader ${roster.length}/${VELIKOST_EKIPE}`)
@@ -310,8 +301,9 @@ export default function Administracija() {
       if (kaderPo[koda] !== p.kader)
         napake.push(`${p.naslov} ${kaderPo[koda]}/${p.kader}`)
     }
-    const poKlubu = {}
-    for (const p of kader) poKlubu[p.team_id] = (poKlubu[p.team_id] ?? 0) + 1
+    const poKlubu: Record<string, number> = {}
+    for (const p of kader)
+      poKlubu[String(p.team_id)] = (poKlubu[String(p.team_id)] ?? 0) + 1
     if (Object.values(poKlubu).some((n) => n > MAX_IZ_KLUBA))
       napake.push(`>${MAX_IZ_KLUBA} iz istega kluba`)
     if (kader.filter((p) => !p.active).length > 0)
@@ -334,20 +326,20 @@ export default function Administracija() {
     setSporocilo(`Točke preračunane za ${krogi.length} krogov.`)
   }
 
-  async function isciIgralca(e) {
+  async function isciIgralca(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     if (!iskanje.trim()) return setZadetki([])
     const { data } = await supabase
       .from('player_overview')
       .select('id, full_name, team_id, team_name, position, value, minutes, goals')
-      .eq('competition_id', tekmovanjeId)
+      .eq('competition_id', tekmovanjeId as number)
       .ilike('full_name', `%${iskanje.trim()}%`)
       .order('full_name')
       .limit(15)
     setZadetki(data ?? [])
   }
 
-  async function premakniKlub(id, novKlubId) {
+  async function premakniKlub(id: number, novKlubId: number) {
     setNapaka(null)
     const { error } = await supabase
       .from('players')
@@ -363,7 +355,7 @@ export default function Administracija() {
     setSporocilo(`Igralec prestavljen v klub ${novoIme}.`)
   }
 
-  async function nastaviPozicijo(id, pozicija) {
+  async function nastaviPozicijo(id: number, pozicija: Pozicija) {
     setNapaka(null)
     const { error } = await supabase
       .from('players')
@@ -374,11 +366,14 @@ export default function Administracija() {
     setSporocilo('Pozicija nastavljena.')
   }
 
-  async function shraniNzs(id, polje, vrednost) {
+  async function shraniNzs(id: number, polje: string, vrednost: any) {
     setNapaka(null)
     const { error } = await supabase
       .from('players')
-      .update({ [polje]: vrednost, nzs_confirmed_at: new Date().toISOString() })
+      .update({
+        [polje]: vrednost,
+        nzs_confirmed_at: new Date().toISOString(),
+      } as any)
       .eq('id', id)
     if (error) return setNapaka(error.message)
     setSporocilo('NZS podatek shranjen. Vrednost se posodobi ob naslednjem ovrednotenju.')
@@ -401,7 +396,7 @@ export default function Administracija() {
         Administracija
         {tekmovanje && (
           <span className="ml-2 align-middle text-base font-bold text-slate-500">
-            {tekmovanje.short_name.toLowerCase()}
+            {tekmovanje.short_name?.toLowerCase()}
           </span>
         )}
       </h1>
@@ -466,7 +461,7 @@ export default function Administracija() {
                 />
                 <button
                   onClick={() =>
-                    posljiTestniMail(testniNaslov || session?.user?.email)
+                    posljiTestniMail(testniNaslov || (session?.user?.email ?? ''))
                   }
                   disabled={posiljam}
                   className="gumb-tih text-xs disabled:opacity-50"
@@ -828,7 +823,7 @@ SUPABASE_SERVICE_ROLE_KEY=... node scripts/ovrednoti-igralce.mjs --tekmovanje ${
                   </a>
                 </div>
                 <ul className="mt-1 text-amber-300">
-                  {t.import_warnings.map((o, i) => (
+                  {t.import_warnings.map((o: string, i: number) => (
                     <li key={i}>• {o}</li>
                   ))}
                 </ul>
@@ -864,12 +859,15 @@ SUPABASE_SERVICE_ROLE_KEY=... node scripts/ovrednoti-igralce.mjs --tekmovanje ${
                 </span>
                 <span className="text-xs text-slate-500">{z.team_name}</span>
                 <span className="text-xs text-slate-400">
-                  {z.position ? IME_POZICIJE[z.position] : 'brez pozicije'} ·{' '}
+                  {z.position
+                    ? IME_POZICIJE[z.position as Pozicija]
+                    : 'brez pozicije'}{' '}
+                  ·{' '}
                   {formatirajTocke(z.value)}
                 </span>
               </div>
               <div className="mt-2 flex flex-wrap gap-1">
-                {['GK', 'DEF', 'MID', 'FWD'].map((p) => (
+                {(['GK', 'DEF', 'MID', 'FWD'] as Pozicija[]).map((p) => (
                   <button
                     key={p}
                     onClick={() => nastaviPozicijo(z.id, p)}
@@ -933,7 +931,15 @@ SUPABASE_SERVICE_ROLE_KEY=... node scripts/ovrednoti-igralce.mjs --tekmovanje ${
   )
 }
 
-function Kazalnik({ oznaka, vrednost, opozori }) {
+function Kazalnik({
+  oznaka,
+  vrednost,
+  opozori,
+}: {
+  oznaka: string
+  vrednost: number
+  opozori?: boolean
+}) {
   return (
     <div
       className={`kartica p-4 ${opozori && vrednost > 0 ? 'ring-1 ring-amber-400/40' : ''}`}
@@ -946,7 +952,15 @@ function Kazalnik({ oznaka, vrednost, opozori }) {
   )
 }
 
-function VrsticaZaUrejanje({ zacetna, nashrani, naprekini }) {
+function VrsticaZaUrejanje({
+  zacetna,
+  nashrani,
+  naprekini,
+}: {
+  zacetna: string
+  nashrani: (v: string) => void
+  naprekini: () => void
+}) {
   const [vrednost, setVrednost] = useState(zacetna)
   return (
     <form

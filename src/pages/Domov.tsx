@@ -8,29 +8,66 @@ import Grb from '../components/Grb'
 import Klepet from '../components/Klepet'
 import Odstevanje from '../components/Odstevanje'
 import EnajstericaNaIgriscu from '../components/EnajstericaNaIgriscu'
+import type { IgralecEnajsterice } from '../components/EnajstericaNaIgriscu'
+import type { Pozicija } from '../lib/tipi'
+
+/** Stevilke v pasu na vrhu naslovnice. */
+interface Statistika {
+  tekme: number
+  igralci: number
+  goli: number
+  brezAsistence: number
+}
+
+/** Igralec v eni od treh lestvic (strelci, podajalci, obrambe). */
+interface VrhIgralec {
+  id: number
+  full_name: string | null
+  team_name?: string | null
+  team_short?: string | null
+  team_logo?: string | null
+  position?: Pozicija | null
+  value?: number | null
+  goals?: number | null
+  assists?: number | null
+  clean_sheets?: number | null
+  minutes?: number | null
+}
+
+/** Krog, kot ga rabi naslovnica. */
+interface KrogPodatek {
+  id: number
+  number: number | null
+  season: string | null
+  played_on: string | null
+  deadline_at?: string | null
+}
 
 export default function Domov() {
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
-  const [stat, setStat] = useState(null)
-  const [zvezde, setZvezde] = useState([])
-  const [podajalci, setPodajalci] = useState([])
-  const [obrambe, setObrambe] = useState([])
-  const [krog, setKrog] = useState(null)
-  const [krogNajboljsi, setKrogNajboljsi] = useState([])
-  const [idealnaPostava, setIdealnaPostava] = useState([])
-  const [naslednjeTekme, setNaslednjeTekme] = useState([])
-  const [zadnjiRezultati, setZadnjiRezultati] = useState([])
-  const [naslednjiKrog, setNaslednjiKrog] = useState(null)
+  const [stat, setStat] = useState<Statistika | null>(null)
+  const [zvezde, setZvezde] = useState<VrhIgralec[]>([])
+  const [podajalci, setPodajalci] = useState<VrhIgralec[]>([])
+  const [obrambe, setObrambe] = useState<VrhIgralec[]>([])
+  const [krog, setKrog] = useState<KrogPodatek | null>(null)
+  const [krogNajboljsi, setKrogNajboljsi] = useState<any[]>([])
+  const [idealnaPostava, setIdealnaPostava] = useState<IgralecEnajsterice[]>(
+    [],
+  )
+  const [naslednjeTekme, setNaslednjeTekme] = useState<any[]>([])
+  const [zadnjiRezultati, setZadnjiRezultati] = useState<any[]>([])
+  const [naslednjiKrog, setNaslednjiKrog] = useState<KrogPodatek | null>(null)
 
   useEffect(() => {
     if (!tekmovanjeId) return
+    const ligaId = tekmovanjeId
     async function nalozi() {
       // Tekoča sezona — potrebuje jo vsaka od treh lestvic spodaj (strelci,
       // podajalci, obrambe), zato jo poberemo enkrat vnaprej.
       const { data: sezonaPodatek } = await supabase
         .from('sezone')
         .select('season')
-        .eq('competition_id', tekmovanjeId)
+        .eq('competition_id', ligaId)
         .eq('tekoca', true)
         .maybeSingle()
       const tekocaSezona = sezonaPodatek?.season ?? ''
@@ -45,24 +82,24 @@ export default function Domov() {
               count: 'exact',
               head: true,
             })
-            .eq('rounds.competition_id', tekmovanjeId),
+            .eq('rounds.competition_id', ligaId),
           supabase
             .from('players')
             .select('id', { count: 'exact', head: true })
-            .eq('competition_id', tekmovanjeId),
+            .eq('competition_id', ligaId),
           supabase
             .from('goals')
             .select('id, matches!inner(rounds!inner(competition_id))', {
               count: 'exact',
               head: true,
             })
-            .eq('matches.rounds.competition_id', tekmovanjeId),
+            .eq('matches.rounds.competition_id', ligaId),
           // Samo tekme, ki so bile odigrane v zadnjih 21 dneh — sicer 704
           // nerešenih iz prejšnje sezone večno visijo v obvestilu.
           supabase
             .from('match_assist_status')
             .select('brez_asistence, played_on')
-            .eq('competition_id', tekmovanjeId)
+            .eq('competition_id', ligaId)
             .gte(
               'played_on',
               new Date(Date.now() - 21 * 86400000).toISOString().slice(0, 10),
@@ -75,7 +112,7 @@ export default function Domov() {
             .select(
               'id, full_name, team_name, team_short, team_logo, position, value, goals, minutes',
             )
-            .eq('competition_id', tekmovanjeId)
+            .eq('competition_id', ligaId)
             .eq('season', tekocaSezona)
             .order('goals', { ascending: false })
             .order('minutes', { ascending: false })
@@ -85,7 +122,7 @@ export default function Domov() {
             .select(
               'id, full_name, team_name, team_short, team_logo, position, value, assists, minutes',
             )
-            .eq('competition_id', tekmovanjeId)
+            .eq('competition_id', ligaId)
             .eq('season', tekocaSezona)
             .order('assists', { ascending: false })
             .order('minutes', { ascending: false })
@@ -95,7 +132,7 @@ export default function Domov() {
             .select(
               'id, full_name, team_name, team_short, team_logo, position, value, clean_sheets, minutes',
             )
-            .eq('competition_id', tekmovanjeId)
+            .eq('competition_id', ligaId)
             .eq('season', tekocaSezona)
             .order('clean_sheets', { ascending: false })
             .order('minutes', { ascending: false })
@@ -105,22 +142,22 @@ export default function Domov() {
         tekme: tekme.count ?? 0,
         igralci: igralci.count ?? 0,
         goli: goli.count ?? 0,
-        brezAsistence: (brezAsistence.data ?? []).reduce(
-          (v, x) => v + Number(x.brez_asistence ?? 0),
+        brezAsistence: ((brezAsistence.data ?? []) as any[]).reduce(
+          (v: number, x) => v + Number(x.brez_asistence ?? 0),
           0,
         ),
       })
-      setZvezde(top.data ?? [])
-      setPodajalci(podajalciTop.data ?? [])
-      setObrambe(obrambeTop.data ?? [])
+      setZvezde((top.data ?? []) as VrhIgralec[])
+      setPodajalci((podajalciTop.data ?? []) as VrhIgralec[])
+      setObrambe((obrambeTop.data ?? []) as VrhIgralec[])
 
       // Naslednji krog — za odštevalnik do zaklepanja postave.
       const { data: nextRound } = await supabase
         .from('naslednji_krog')
         .select('id, number, season, played_on, deadline_at')
-        .eq('competition_id', tekmovanjeId)
+        .eq('competition_id', ligaId)
         .maybeSingle()
-      setNaslednjiKrog(nextRound ?? null)
+      setNaslednjiKrog((nextRound as KrogPodatek | null) ?? null)
 
       // Naslednje tekme (neuvožene) + zadnji rezultati (uvožene v zadnjih 14 dneh).
       const enkratDavno = new Date(Date.now() - 14 * 86400000)
@@ -137,7 +174,7 @@ export default function Domov() {
           .select(
             'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals, rounds!inner(competition_id)',
           )
-          .eq('rounds.competition_id', tekmovanjeId)
+          .eq('rounds.competition_id', ligaId)
           .is('imported_at', null)
           .order('played_on', { ascending: true, nullsFirst: false })
           .limit(30),
@@ -146,7 +183,7 @@ export default function Domov() {
           .select(
             'id, round_id, home_team_id, away_team_id, played_on, home_goals, away_goals, rounds!inner(competition_id)',
           )
-          .eq('rounds.competition_id', tekmovanjeId)
+          .eq('rounds.competition_id', ligaId)
           .not('imported_at', 'is', null)
           .gte('played_on', enkratDavno)
           .order('played_on', { ascending: false })
@@ -154,27 +191,32 @@ export default function Domov() {
         supabase
           .from('competition_teams')
           .select('team_id, name, short_name, logo_url')
-          .eq('competition_id', tekmovanjeId),
+          .eq('competition_id', ligaId),
         supabase
           .from('rounds')
           .select('id, season, number, played_on')
-          .eq('competition_id', tekmovanjeId),
+          .eq('competition_id', ligaId),
       ])
-      const klubPo = Object.fromEntries(
-        (vsiKlubi ?? []).map((t) => [t.team_id, { ...t, id: t.team_id }]),
+      const klubPo: Record<string, any> = Object.fromEntries(
+        ((vsiKlubi ?? []) as any[]).map((t) => [
+          String(t.team_id),
+          { ...t, id: t.team_id },
+        ]),
       )
-      const krogPo = Object.fromEntries((vsiKrogi ?? []).map((k) => [k.id, k]))
-      const obogati = (m) => ({
+      const krogPo: Record<string, any> = Object.fromEntries(
+        ((vsiKrogi ?? []) as any[]).map((k) => [String(k.id), k]),
+      )
+      const obogati = (m: any) => ({
         ...m,
-        home: klubPo[m.home_team_id],
-        away: klubPo[m.away_team_id],
-        krog: krogPo[m.round_id],
+        home: klubPo[String(m.home_team_id)],
+        away: klubPo[String(m.away_team_id)],
+        krog: krogPo[String(m.round_id)],
       })
       // Placeholderji iz uvoz-razporeda (imported_at IS NULL) so pogosto
       // dvojnik uvoženih tekem. Iztlačimo tiste, za katere OBSTAJA uvožena
       // tekma z istimi ekipami na isti dan.
-      const uvozeniKljuc = new Set(
-        (nedavno ?? []).map(
+      const uvozeniKljuc = new Set<string>(
+        ((nedavno ?? []) as any[]).map(
           (m) =>
             `${m.home_team_id}-${m.away_team_id}-${m.played_on ?? ''}`,
         ),
@@ -192,29 +234,45 @@ export default function Domov() {
       const { data: zadnji } = await supabase
         .from('zadnji_odigrani_krog')
         .select('id, season, number, played_on')
-        .eq('competition_id', tekmovanjeId)
+        .eq('competition_id', ligaId)
         .maybeSingle()
-      setKrog(zadnji ?? null)
-      if (zadnji) {
+      // Pogled vraca nullable stolpce; brez id-ja kroga ni.
+      const krogOk: KrogPodatek | null =
+        zadnji && zadnji.id != null
+          ? {
+              id: zadnji.id,
+              number: zadnji.number,
+              season: zadnji.season,
+              played_on: zadnji.played_on,
+            }
+          : null
+      setKrog(krogOk)
+      if (krogOk) {
         const { data: najboljsi } = await supabase
           .from('krog_najboljsi')
           .select(
             'player_id, full_name, position, team_name, team_short, team_logo, points, minutes, price_delta, rank',
           )
-          .eq('round_id', zadnji.id)
+          .eq('round_id', krogOk.id)
           .order('points', { ascending: false })
           .limit(50)
-        setKrogNajboljsi((najboljsi ?? []).slice(0, 5))
+        setKrogNajboljsi(((najboljsi ?? []) as any[]).slice(0, 5))
 
         // Idealna enajsterica: 1 GK + top 4 DEF + top 4 MID + top 2 FWD
         // po točkah v zadnjem odigranem krogu. Če je pozicij premalo,
         // dopolni z ostalimi najboljšimi. Pokaže, kaj se sistem šteje
         // za "the team of the week".
-        const poPozicijah = { GK: [], DEF: [], MID: [], FWD: [] }
-        for (const p of najboljsi ?? []) {
-          if (poPozicijah[p.position]) poPozicijah[p.position].push(p)
+        const poPozicijah: Record<Pozicija, any[]> = {
+          GK: [],
+          DEF: [],
+          MID: [],
+          FWD: [],
         }
-        const izbrani = [
+        for (const p of (najboljsi ?? []) as any[]) {
+          const poz = p.position as Pozicija | null
+          if (poz && poPozicijah[poz]) poPozicijah[poz].push(p)
+        }
+        const izbrani: any[] = [
           ...poPozicijah.GK.slice(0, 1),
           ...poPozicijah.DEF.slice(0, 4),
           ...poPozicijah.MID.slice(0, 4),
@@ -222,11 +280,11 @@ export default function Domov() {
         ]
         // Če je premalo (redke pozicije brez podatkov), dopolni s top preostalimi.
         const uporabljeni = new Set(izbrani.map((p) => p.player_id))
-        for (const p of najboljsi ?? []) {
+        for (const p of (najboljsi ?? []) as any[]) {
           if (izbrani.length >= 11) break
           if (!uporabljeni.has(p.player_id)) izbrani.push(p)
         }
-        setIdealnaPostava(izbrani)
+        setIdealnaPostava(izbrani as IgralecEnajsterice[])
       } else {
         setKrogNajboljsi([])
         setIdealnaPostava([])
@@ -395,7 +453,7 @@ export default function Domov() {
                       )}
                     </div>
                     <ul className="space-y-1.5">
-                      {tekme.map((t) => (
+                      {tekme.map((t: any) => (
                         <li key={t.id}>
                           <Link
                             to={`/tekma/${t.id}`}
@@ -686,7 +744,7 @@ export default function Domov() {
                       )}
                     </div>
                     <ul className="space-y-1.5">
-                      {tekme.map((t) => (
+                      {tekme.map((t: any) => (
                         <li
                           key={t.id}
                           className="flex items-center gap-2 rounded-lg bg-white/5 p-2 text-sm"
@@ -822,7 +880,19 @@ export default function Domov() {
 // Vrh sezonske lestvice po enem statu (goli, asistence, ohranjene mreže) —
 // isti vzorec za vse tri, da lestvice na prvi pogled izgledajo kot ena
 // družina, ne tri različne komponente.
-function VrhLestvice({ naslov, ikona, znacka, kljuc, seznam }) {
+function VrhLestvice({
+  naslov,
+  ikona,
+  znacka,
+  kljuc,
+  seznam,
+}: {
+  naslov: string
+  ikona: string
+  znacka: string
+  kljuc: 'goals' | 'assists' | 'clean_sheets'
+  seznam: VrhIgralec[]
+}) {
   if (seznam.length === 0) return null
   return (
     <section className="space-y-3">
@@ -861,7 +931,17 @@ function VrhLestvice({ naslov, ikona, znacka, kljuc, seznam }) {
   )
 }
 
-function Stevilka({ oznaka, vrednost, ikona, poudari }) {
+function Stevilka({
+  oznaka,
+  vrednost,
+  ikona,
+  poudari,
+}: {
+  oznaka: string
+  vrednost: number
+  ikona: string
+  poudari?: boolean
+}) {
   return (
     <div
       className={`kartica p-4 ${poudari && vrednost > 0 ? 'ring-1 ring-gnl-400/40' : ''}`}
