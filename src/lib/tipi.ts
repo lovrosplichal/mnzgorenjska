@@ -4,6 +4,11 @@
 // v `src/lib/baza.types.ts` (`npm run tipi`). Tu so samo pojmi, ki jih shema
 // ne pozna, ker živijo v aplikaciji.
 
+import type { Database } from './baza.types'
+
+type Pogledi = Database['public']['Views']
+type Tabele = Database['public']['Tables']
+
 /** Pozicija igralca. V bazi je `players.position` (text, lahko prazen). */
 export type Pozicija = 'GK' | 'DEF' | 'MID' | 'FWD'
 
@@ -55,3 +60,16 @@ export interface IzracunTock {
   skupaj: number
   postavke: Postavka[]
 }
+
+// --- Vrstice pogledov in tabel --------------------------------------------
+// Teh NE pisemo na roko: izpeljemo jih iz generiranih tipov, da se ob
+// spremembi migracije popravijo same. `npm run tipi` osvezi `baza.types.ts`.
+
+/** Odigrana tekma s stevilom golov brez asistence (`match_assist_status`). */
+export type TekmaVrstica = Pogledi['match_assist_status']['Row']
+
+/** Tocke igralca na eni tekmi (`appearance_points`). */
+export type TockeNastopa = Pogledi['appearance_points']['Row']
+
+/** Vrstica tabele `players`. */
+export type IgralecVrstica = Tabele['players']['Row']

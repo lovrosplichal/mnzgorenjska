@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 
@@ -9,7 +9,7 @@ export default function NovoGeslo() {
   const [geslo, setGeslo] = useState('')
   const [ponovi, setPonovi] = useState('')
   const [pripravljen, setPripravljen] = useState(false)
-  const [napaka, setNapaka] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
   const [posiljam, setPosiljam] = useState(false)
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export default function NovoGeslo() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
-  async function poslji(e) {
+  async function poslji(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setNapaka(null)
     if (geslo !== ponovi) return setNapaka('Gesli se ne ujemata.')

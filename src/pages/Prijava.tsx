@@ -1,21 +1,22 @@
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
 
+type Nacin = 'prijava' | 'registracija' | 'pozabljeno'
+
 export default function Prijava() {
   const { session } = useAuth()
   const navigate = useNavigate()
-  // 'prijava' | 'registracija' | 'pozabljeno'
-  const [nacin, setNacin] = useState('prijava')
+  const [nacin, setNacin] = useState<Nacin>('prijava')
   const [email, setEmail] = useState('')
   const [geslo, setGeslo] = useState('')
   const [ime, setIme] = useState('')
-  const [napaka, setNapaka] = useState(null)
-  const [sporocilo, setSporocilo] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
+  const [sporocilo, setSporocilo] = useState<string | null>(null)
   const [posiljam, setPosiljam] = useState(false)
 
-  async function poslji(e) {
+  async function poslji(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
     setNapaka(null)
     setSporocilo(null)

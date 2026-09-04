@@ -4,28 +4,37 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useTekmovanje } from '../lib/tekmovanje'
 import Grb from '../components/Grb'
+import type { TekmaVrstica } from '../lib/tipi'
+
+
 
 export default function Rezultati() {
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
-  const [tekme, setTekme] = useState([])
-  const [sezona, setSezona] = useState(null)
-  const [krogId, setKrogId] = useState(null)
+  const [tekme, setTekme] = useState<TekmaVrstica[]>([])
+  const [sezona, setSezona] = useState<string | null>(null)
+  const [krogId, setKrogId] = useState<number | null>(null)
   const [nalaganje, setNalaganje] = useState(true)
-  const [napaka, setNapaka] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
 
   useEffect(() => {
     if (!tekmovanjeId) return
     setNalaganje(true)
+    // Ujamemo tu: znotraj async funkcije preverjanje z vrha ne velja vec.
+    const ligaId = tekmovanjeId
     async function nalozi() {
       const { data, error } = await supabase
         .from('match_assist_status')
         .select('*')
-        .eq('competition_id', tekmovanjeId)
+        .eq('competition_id', ligaId)
         .order('played_on', { ascending: false })
       if (error) setNapaka(error.message)
-      const vrstice = data ?? []
+      const vrstice = (data ?? []) as TekmaVrstica[]
       setTekme(vrstice)
-      const sezone = [...new Set(vrstice.map((t) => t.season))].sort().reverse()
+      const sezone = [
+        ...new Set(vrstice.map((t) => t.season).filter((x): x is string => !!x)),
+      ]
+        .sort()
+        .reverse()
       setSezona(sezone[0] ?? null)
       setKrogId(vrstice.find((t) => t.season === sezone[0])?.round_id ?? null)
       setNalaganje(false)
@@ -34,14 +43,21 @@ export default function Rezultati() {
   }, [tekmovanjeId])
 
   const sezone = useMemo(
-    () => [...new Set(tekme.map((t) => t.season))].sort().reverse(),
+    () =>
+      [
+        ...new Set(tekme.map((t) => t.season).filter((x): x is string => !!x)),
+      ]
+        .sort()
+        .reverse(),
     [tekme],
   )
 
   const krogi = useMemo(() => {
-    const m = new Map()
-    for (const t of tekme.filter((t) => t.season === sezona))
-      m.set(t.round_id, { id: t.round_id, number: t.round_number })
+    const m = new Map<number, { id: number; number: number }>()
+    for (const t of tekme.filter((t) => t.season === sezona)) {
+      if (t.round_id == null) continue
+      m.set(t.round_id, { id: t.round_id, number: t.round_number ?? 0 })
+    }
     return [...m.values()].sort((a, b) => b.number - a.number)
   }, [tekme, sezona])
 
@@ -57,7 +73,10 @@ export default function Rezultati() {
     <div className="space-y-6">
       <header className="space-y-2">
         <h1 className="text-3xl font-black naslov">
-          Rezultati{tekmovanje ? ` — ${tekmovanje.short_name.toLowerCase()}` : ''}
+          Rezultati
+          {tekmovanje?.short_name
+            ? ` — ${tekmovanje.short_name.toLowerCase()}`
+            : ''}
         </h1>
         <p className="max-w-2xl text-slate-400">
           Odigrane tekme iz zapisnikov MNZ Gorenjska. Klikni na tekmo in vidiš

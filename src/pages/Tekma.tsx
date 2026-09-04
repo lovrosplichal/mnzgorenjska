@@ -3,11 +3,25 @@ import { useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
+import type { Pozicija } from '../lib/tipi'
 import Grb from '../components/Grb'
 import IgrisceTocke from '../components/IgrisceTocke'
 import GolZaGlasovanje, { caka } from '../components/GolZaGlasovanje'
+import type { Gol, Glas, Kandidat } from '../components/GolZaGlasovanje'
+import type { NastopNaTekmi } from '../components/IgrisceTocke'
+import type { TekmaVrstica } from '../lib/tipi'
 
-const datum = (d) =>
+/**
+ * Nastop na tekmi, kot ga sestavi ta stran: vrstica `appearances` z vlozenim
+ * igralcem, sploscenimi imeni in tockami iz `appearance_points`.
+ */
+type NastopTekme = NastopNaTekmi &
+  Kandidat & {
+    team_id?: number | null
+    players?: { full_name?: string | null; position?: Pozicija | null } | null
+  }
+
+const datum = (d?: string | null) =>
   d
     ? new Date(d).toLocaleDateString('sl-SI', {
         day: 'numeric',
@@ -18,15 +32,22 @@ const datum = (d) =>
 
 export default function Tekma() {
   const { id } = useParams()
+  // Iz naslova pride niz; stolpec je stevilcen. Doslej je pretvorbo tiho
+  // opravil PostgREST, zdaj jo naredimo tu in je razvidna.
+  const tekmaId = Number(id)
   const { session } = useAuth()
-  const [tekma, setTekma] = useState(null)
-  const [nastopi, setNastopi] = useState([])
-  const [goli, setGoli] = useState([])
-  const [glasovi, setGlasovi] = useState({}) // goal_id -> [{player_id, votes}]
-  const [mojiGlasovi, setMojiGlasovi] = useState({}) // goal_id -> player_id
-  const [pravkarOddan, setPravkarOddan] = useState(null)
+  const [tekma, setTekma] = useState<TekmaVrstica | null>(null)
+  const [nastopi, setNastopi] = useState<NastopTekme[]>([])
+  const [goli, setGoli] = useState<Gol[]>([])
+  // goal_id -> glasovi, razvrsceni padajoce
+  const [glasovi, setGlasovi] = useState<Record<string, Glas[]>>({})
+  // goal_id -> igralec, za katerega sem glasoval (null = "brez asistence")
+  const [mojiGlasovi, setMojiGlasovi] = useState<Record<string, number | null>>(
+    {},
+  )
+  const [pravkarOddan, setPravkarOddan] = useState<number | null>(null)
   const [nalaganje, setNalaganje] = useState(true)
-  const [napaka, setNapaka] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
 
   useEffect(() => {
     let preklican = false
@@ -43,59 +64,64 @@ export default function Tekma() {
         supabase
           .from('match_assist_status')
           .select('*')
-          .eq('match_id', id)
+          .eq('match_id', tekmaId)
           .maybeSingle(),
         supabase
           .from('appearances')
           .select(
             'id, team_id, player_id, started, shirt_number, minutes_played, goals, own_goals, penalties_scored, penalties_missed, penalties_saved, yellow_cards, red_cards, goals_conceded, clean_sheet, players(full_name, position)',
           )
-          .eq('match_id', id)
+          .eq('match_id', tekmaId)
           .order('shirt_number', { nullsFirst: false }),
         supabase
           .from('appearance_points')
           .select('appearance_id, points, assists')
-          .eq('match_id', id),
+          .eq('match_id', tekmaId),
         supabase
           .from('goals')
           .select(
             'id, minute, is_own_goal, is_penalty, score_home, score_away, team_id, scorer:scorer_id(id, full_name), assist_player_id, assist:assist_player_id(full_name)',
           )
-          .eq('match_id', id)
+          .eq('match_id', tekmaId)
           .order('minute'),
       ])
       if (preklican) return
       const napacno = eT ?? eN ?? eP ?? eG
       if (napacno) setNapaka(napacno.message)
 
-      const tocke = Object.fromEntries(
-        (tockeNastopov ?? []).map((x) => [x.appearance_id, x]),
-      )
-      setTekma(t ?? null)
+      const tocke: Record<string, { points?: number | null; assists?: number | null }> =
+        Object.fromEntries(
+          (tockeNastopov ?? []).map((x: any) => [String(x.appearance_id), x]),
+        )
+      setTekma((t as TekmaVrstica | null) ?? null)
       setNastopi(
-        (nastopiTekme ?? []).map((n) => ({
+        (nastopiTekme ?? []).map((n: any) => ({
           ...n,
           full_name: n.players?.full_name,
           position: n.players?.position,
-          points: tocke[n.id]?.points ?? 0,
-          assists: tocke[n.id]?.assists ?? 0,
-        })),
+          points: tocke[String(n.id)]?.points ?? 0,
+          assists: tocke[String(n.id)]?.assists ?? 0,
+        })) as NastopTekme[],
       )
-      setGoli(g ?? [])
+      setGoli(((g ?? []) as unknown) as Gol[])
       setNalaganje(false)
 
       // Glasovi o asistencah — na tej strani se da tudi glasovati.
-      const idji = (g ?? []).map((x) => x.id)
+      const idji = (g ?? []).map((x: any) => x.id as number)
       if (idji.length) osveziGlasove(idji)
     }
-    async function osveziGlasove(idji) {
+    async function osveziGlasove(idji: number[]) {
       const { data: st } = await supabase
         .from('assist_vote_counts')
         .select('goal_id, player_id, votes')
         .in('goal_id', idji)
       if (preklican) return
-      const skupine = {}
-      for (const x of st ?? []) (skupine[x.goal_id] ??= []).push(x)
+      const skupine: Record<string, Glas[]> = {}
+      for (const x of (st ?? []) as any[])
+        (skupine[String(x.goal_id)] ??= []).push({
+          player_id: x.player_id,
+          votes: x.votes,
+        })
       for (const k of Object.keys(skupine))
         skupine[k].sort((a, b) => b.votes - a.votes)
       setGlasovi(skupine)
@@ -108,7 +134,9 @@ export default function Tekma() {
         .eq('voter_id', session.user.id)
       if (preklican) return
       setMojiGlasovi(
-        Object.fromEntries((moji ?? []).map((m) => [m.goal_id, m.player_id])),
+        Object.fromEntries(
+          (moji ?? []).map((m: any) => [String(m.goal_id), m.player_id]),
+        ),
       )
     }
 
@@ -116,9 +144,9 @@ export default function Tekma() {
     return () => {
       preklican = true
     }
-  }, [id, session])
+  }, [tekmaId, session])
 
-  async function glasuj(golId, playerId) {
+  async function glasuj(golId: number, playerId: number | null) {
     if (!session) return
     setNapaka(null)
 
@@ -128,7 +156,7 @@ export default function Tekma() {
     )
     if (error) return setNapaka(error.message)
 
-    setMojiGlasovi({ ...mojiGlasovi, [golId]: playerId })
+    setMojiGlasovi({ ...mojiGlasovi, [String(golId)]: playerId })
     setPravkarOddan(golId)
     setTimeout(() => setPravkarOddan(null), 1200)
 
@@ -146,13 +174,19 @@ export default function Tekma() {
     ])
     setGlasovi((prej) => ({
       ...prej,
-      [golId]: (st ?? []).sort((a, b) => b.votes - a.votes),
+      [String(golId)]: ((st ?? []) as any[])
+        .map((x) => ({ player_id: x.player_id, votes: x.votes }))
+        .sort((a, b) => b.votes - a.votes),
     }))
     if (gg)
       setGoli((prej) =>
         prej.map((x) =>
           x.id === golId
-            ? { ...x, assist_player_id: gg.assist_player_id, assist: gg.assist }
+            ? {
+                ...x,
+                assist_player_id: gg.assist_player_id,
+                assist: gg.assist as Gol['assist'],
+              }
             : x,
         ),
       )
@@ -173,7 +207,7 @@ export default function Tekma() {
 
   // Koliko golov te tekme še čaka na odločitev skupnosti. Enajstmetrovke,
   // avtogoli in goli, pri katerih je zmagalo »brez asistence«, ne čakajo.
-  const cakajocih = goli.filter((g) => caka(g, glasovi[g.id] ?? [])).length
+  const cakajocih = goli.filter((g) => caka(g, glasovi[String(g.id)] ?? [])).length
 
   // Nastopi so v isti tabeli za obe ekipi; razdelimo jih po klubu.
   const domaci = nastopi.filter((n) => n.team_id === tekma.home_team_id)
@@ -266,11 +300,11 @@ export default function Tekma() {
                   (n) =>
                     n.team_id === g.team_id &&
                     n.player_id !== g.scorer?.id &&
-                    n.minutes_played > 0,
+                    Number(n.minutes_played ?? 0) > 0,
                 )}
                 nastopi={nastopi}
-                glasovi={glasovi[g.id] ?? []}
-                mojGlas={mojiGlasovi[g.id]}
+                glasovi={glasovi[String(g.id)] ?? []}
+                mojGlas={mojiGlasovi[String(g.id)]}
                 omogoceno={Boolean(session)}
                 pravkar={pravkarOddan === g.id}
                 onGlasuj={glasuj}
