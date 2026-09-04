@@ -137,40 +137,16 @@ for (const u of uporabniki) {
 }
 console.log('Fantasy ekipe sestavljene.')
 
-// --- ocene ------------------------------------------------------------------
-// vsak igralec ima skrito "kakovost", glasovi nihajo okoli nje
-const kakovost = Object.fromEntries(
-  igralci.map((p) => [p.id, 4.5 + nakljucno() * 4]),
-)
-
+// --- tocke -----------------------------------------------------------------
+// Tocke izhajajo iz statistike zapisnikov, ne iz ocen: tabelo `ratings` je
+// odstranila migracija 20260827130000_odstrani_ocenjevanje.sql. Tu zato samo
+// prezenemo preracun za vsak krog, da lestvica ni prazna.
 for (const krog of krogi) {
-  const vrstice = []
-  for (const u of uporabniki) {
-    // vsak glasovalec oceni naključnih ~40 igralcev (kot da je videl nekaj tekem)
-    const videni = igralci.filter(() => nakljucno() < 0.36)
-    for (const p of videni) {
-      const sum = (nakljucno() - 0.5) * 2.5
-      const ocena = Math.min(10, Math.max(1, Math.round(kakovost[p.id] + sum)))
-      vrstice.push({
-        round_id: krog.id,
-        player_id: p.id,
-        voter_id: u.id,
-        rating: ocena,
-      })
-    }
-  }
-  const { error } = await db
-    .from('ratings')
-    .upsert(vrstice, { onConflict: 'round_id,player_id,voter_id' })
-  if (error) {
-    console.error(`krog ${krog.number}:`, error.message)
-    continue
-  }
-  const { error: eRpc } = await db.rpc('recompute_round_scores', {
+  const { error } = await db.rpc('recompute_round_scores', {
     p_round_id: krog.id,
   })
   console.log(
-    `Krog ${krog.number}: ${vrstice.length} glasov${eRpc ? ' — RPC napaka: ' + eRpc.message : ', točke preračunane'}`,
+    `Krog ${krog.number}: ${error ? 'RPC napaka: ' + error.message : 'tocke preracunane'}`,
   )
 }
 

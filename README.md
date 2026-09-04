@@ -156,7 +156,10 @@ npx supabase start
 cp .env.example .env
 #    URL in anon ključ izpiše `npx supabase status`
 
-# 4. zaženi razvojni strežnik
+# 4. napolni testno okolje (zapisniki, pozicije, demo ekipe)
+npm run testno-okolje
+
+# 5. zaženi razvojni strežnik
 npm run dev
 ```
 
@@ -212,15 +215,31 @@ v `matches.import_warnings` in jih pokaže v Administraciji.
 | `npm run smoke` | izris vseh strani + vsa pravila točkovanja in sestave ekipe |
 | `npm run db:start` / `db:stop` | zagon/ustavitev lokalnega Supabase |
 | `npm run db:reset` | ponovna uporaba migracij in seed podatkov |
+| `npm run testno-okolje` | postavi testno bazo od nule: reset + uvoz + pozicije + demo ekipe |
+| `npm run typecheck` | preverjanje tipov (TypeScript) |
+| `npm run tipi` | regeneracija `src/lib/baza.types.ts` iz lokalne baze |
 
 ## Okoljske spremenljivke
 
-Ustvari `.env` datoteko (glej `.env.example`):
+Ustvari `.env` datoteko (glej `.env.example`) — za **lokalni** razvoj vpiši
+vrednosti, ki jih izpiše `npx supabase status`:
 
 ```
-VITE_SUPABASE_URL=...
-VITE_SUPABASE_ANON_KEY=...
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_ANON_KEY=sb_publishable_...    # lokalni, ne produkcijski
+SUPABASE_SERVICE_ROLE_KEY=sb_secret_...      # samo lokalno; rabita ga npm test in uvoz
 ```
+
+`.env` je v `.gitignore` in ne sme v repozitorij.
+
+**Zakaj je `.env.production` vseeno v repozitoriju.** Vsebuje samo URL in
+*publishable* ključ, ki ju brskalnik tako ali tako prenese v bundlu — nista
+skrivnost. Podatke varuje RLS (vseh 24 tabel jo ima vklopljeno), ne ta ključ.
+Skrivni ključ (`sb_secret_…` / `SUPABASE_SERVICE_ROLE_KEY`) obide RLS in ne sme
+nikoli v git — v CI je shranjen med GitHub Secrets.
+
+Razvojni strežnik opozori, če je priklopljen na oddaljeno bazo, in
+`npm run testno-okolje` se proti nelokalnem URL-ju sploh ne zažene.
 
 ## Načrt razvoja (roadmap)
 

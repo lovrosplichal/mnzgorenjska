@@ -119,7 +119,7 @@ function razdeliIme(polno) {
  * vedno, ker isti igralec med sezono lahko zamenja dres.
  */
 async function igralecId(teamId, polnoIme, { vratar, st, dvoumno = false }) {
-  const kljuc = `${teamId}|${polnoIme}${dvoumno ? '#' + st : ''}`
+  let kljuc = `${teamId}|${polnoIme}${dvoumno ? '#' + st : ''}`
   if (igralci.has(kljuc)) return igralci.get(kljuc)
 
   let poizvedba = db
@@ -130,7 +130,32 @@ async function igralecId(teamId, polnoIme, { vratar, st, dvoumno = false }) {
     .eq('full_name', polnoIme)
   if (dvoumno) poizvedba = poizvedba.eq('shirt_number', st)
 
-  let { data: zadetki } = await poizvedba.limit(1)
+  // `.order('id')` ni kozmetika: brez njega Postgres vrne poljubno vrstico in
+  // isti uvoz lahko vsakic pripne statistiko drugemu soimenjaku.
+  let { data: zadetki } = await poizvedba.order('id').limit(2)
+
+  // `dvoumno` pove le, da sta soimenjaka oba nastopila na TEJ tekmi. Ce je
+  // igral en sam, ostane false, poizvedba pa vseeno vrne vec vrstic — takrat
+  // mora odlociti dres, sicer bi statistika vedno pristala pri prvem po id-ju
+  // in torej sistematicno pri napacnem cloveku. (Niko Zelezniki imajo tri
+  // "Potocnik Matic": dresi 5, 6 in 8.)
+  if (!dvoumno && (zadetki?.length ?? 0) > 1 && st != null) {
+    const { data: poDresu } = await db
+      .from('players')
+      .select('id, position, position_source')
+      .eq('competition_id', tekmovanje.id)
+      .eq('team_id', teamId)
+      .eq('full_name', polnoIme)
+      .eq('shirt_number', st)
+      .order('id')
+      .limit(1)
+    if (poDresu?.length) {
+      zadetki = poDresu
+      // Soimenjaka locimo, zato mora tudi predpomnilnik loceti po dresu.
+      kljuc = `${teamId}|${polnoIme}#${st}`
+    }
+  }
+
   let obstoj = zadetki?.[0]
 
   // Prestop med sezono: igralca s tem imenom pri tem klubu ni, imamo pa ga pri

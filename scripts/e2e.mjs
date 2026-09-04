@@ -2,6 +2,10 @@
 // asistencah in pozicijah, točkovanje iz zapisnikov in lestvica.
 //
 // Zahteva uvožene zapisnike (node scripts/uvoz-zapisnikov.mjs).
+//
+// Vsak `.limit(1)` mora imeti tudi `.order(...)`. Brez njega Postgres vrne
+// poljubno vrstico in test dobi ob vsakem zagonu drugega igralca ali krog —
+// enkrat pade, drugič ne, koda pa je ves čas ista.
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
 
@@ -116,6 +120,7 @@ const { data: gol } = await u.c
   .eq('is_penalty', false)
   .is('assist_player_id', null)
   .is('assist_none_confirmed_at', null)
+  .order('id')
   .limit(1)
   .single()
 ok('najden gol brez asistence', Boolean(gol))
@@ -198,6 +203,7 @@ const { data: brezPozicije } = await u.c
   .from('players')
   .select('id, full_name, position, position_source')
   .eq('position_source', 'ugibanje')
+  .order('id')
   .limit(1)
   .single()
 ok('najden igralec z ugibano pozicijo', Boolean(brezPozicije))
@@ -277,17 +283,38 @@ ok(
 // Pozicija odloča, koliko je vreden gol in ohranjena mreža, zato se morajo
 // točke osvežiti takoj — sicer lestvica do naslednjega uvoza kaže stanje,
 // kakršno je bilo, ko je pozicijo poznal samo vratar.
+//
+// Osvežijo se le SVEŽI krogi. `preracunaj_igralca` ima okno (privzeto 14 dni,
+// migracija 20260902110000): kar je starejše, je zgodovina in se ne premika za
+// nazaj. Primerjamo zato samo kroge znotraj okna — sicer je izid odvisen od
+// tega, kako star je naključno izbrani igralec, in test je muhast.
+const OKNO_DNI = 14
+const mejaOkna = new Date(Date.now() - OKNO_DNI * 86400000)
+  .toISOString()
+  .slice(0, 10)
+const { data: sveziKrogi } = await anon
+  .from('rounds')
+  .select('id, played_on')
+const vOknu = new Set(
+  (sveziKrogi ?? [])
+    .filter((r) => r.played_on == null || r.played_on >= mejaOkna)
+    .map((r) => r.id),
+)
+
 const { data: izNastopov } = await anon
   .from('appearance_points')
-  .select('points')
+  .select('round_id, points')
   .eq('player_id', brezPozicije.id)
 const { data: izLestvice } = await anon
   .from('player_scores')
-  .select('points')
+  .select('round_id, points')
   .eq('player_id', brezPozicije.id)
-const vsota = (v) => (v ?? []).reduce((s, x) => s + Number(x.points ?? 0), 0)
+const vsota = (v) =>
+  (v ?? [])
+    .filter((x) => vOknu.has(x.round_id))
+    .reduce((s, x) => s + Number(x.points ?? 0), 0)
 ok(
-  'točke sledijo potrjeni poziciji',
+  'točke sledijo potrjeni poziciji (sveži krogi)',
   Math.abs(vsota(izNastopov) - vsota(izLestvice)) < 0.01,
   `player_scores ${vsota(izLestvice)} proti nastopom ${vsota(izNastopov)}`,
 )
@@ -297,6 +324,7 @@ const { data: vratar } = await anon
   .from('players')
   .select('id, position, position_source')
   .eq('position_source', 'zapisnik')
+  .order('id')
   .limit(1)
   .single()
 ok(
@@ -315,6 +343,8 @@ const { data: vratarCS } = await anon
   .eq('minutes_played', 90)
   .eq('goals', 0)
   .eq('assists', 0)
+  .order('player_id')
+  .order('round_id')
   .limit(1)
   .single()
 ok(
@@ -333,6 +363,8 @@ const { data: vratarPrejeti } = await anon
   .eq('goals', 0)
   .eq('assists', 0)
   .gte('goals_conceded', 2)
+  .order('player_id')
+  .order('round_id')
   .limit(1)
   .single()
 if (vratarPrejeti) {
@@ -402,12 +434,24 @@ ok(
 )
 
 // --- 11. lestvica ---------------------------------------------------------------
-const { data: krog } = await anon.from('rounds').select('id').limit(1).single()
+// Krog mora imeti rok, ki je RES mimo. Samo `.order('number')` je premalo:
+// stevilko 1 ima vsaka sezona, zato je test prej zadel arhivski krog, ki roka
+// sploh nima (`deadline_at is null`) — in predpostavka spodaj ni drzala.
+const { data: krog } = await anon
+  .from('rounds')
+  .select('id')
+  .not('deadline_at', 'is', null)
+  .lt('deadline_at', new Date().toISOString())
+  .order('deadline_at', { ascending: false })
+  .limit(1)
+  .single()
+ok('najden krog s pretecenim rokom', Boolean(krog?.id))
 await u.c.rpc('recompute_round_scores', { p_round_id: krog.id })
 
 // Rok tega kroga je davno mimo, zato ekipa brez posnetka v njem nima postave.
 // Tako je tudi prav — kdor se pridruži pozneje, za odigrane kroge ne dobi točk.
 // Za preizkus lestvice krog izrecno zaklenemo, kar naredi posnetek postave.
+let zaklenjenoOb = null
 if (admin) {
   const { data: predZaklepom } = await anon
     .from('fantasy_team_standings')
@@ -419,6 +463,10 @@ if (admin) {
     Number(predZaklepom?.total_points) === 0,
     `${predZaklepom?.total_points}`,
   )
+  // Zaklep naredi posnetke postav za VSE ekipe (tudi demo). Zapomnimo si cas,
+  // da jih ob pospravljanju pobrisemo — sicer naslednji zagon tega kroga ne
+  // vidi vec kot "brez posnetka" in test pade, ceprav je koda ista.
+  zaklenjenoOb = new Date().toISOString()
   await admin.rpc('zakleni_krog', { p_round_id: krog.id })
 } else {
   console.log('OPOMBA  brez servisnega ključa preskočen preizkus posnetka postave')
@@ -663,6 +711,7 @@ if (admin) {
     .select('id, number, matches!inner(imported_at)')
     .eq('season', zadnja)
     .is('matches.imported_at', null)
+    .order('number')
     .limit(1)
     .maybeSingle()
   await preveriBorzo('neodigran krog', neodigran)
@@ -692,7 +741,12 @@ if (admin) {
   ekipaM = ekipaMlad
   ok('ista oseba ima ekipo v obeh ligah', !eEkipaM, eEkipaM?.message)
 
-  const { data: nekKlub } = await anon.from('teams').select('id').limit(1).single()
+  const { data: nekKlub } = await anon
+    .from('teams')
+    .select('id')
+    .order('id')
+    .limit(1)
+    .single()
   const { data: novMladinec } = await admin
     .from('players')
     .insert({
@@ -733,6 +787,13 @@ for (const usr of users) {
 // Glasovi so potrdili asistenco in pozicijo; brez povrnitve bi naslednji zagon
 // tekel nad podatki, ki jih je pustil prejšnji, in test asistence bi padel.
 if (admin) {
+  if (zaklenjenoOb) {
+    await admin
+      .from('fantasy_lineups')
+      .delete()
+      .eq('round_id', krog.id)
+      .gte('captured_at', zaklenjenoOb)
+  }
   await admin.from('goals').update({ assist_player_id: null }).eq('id', gol.id)
   await admin
     .from('players')

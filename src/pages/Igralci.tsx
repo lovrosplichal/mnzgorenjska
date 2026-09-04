@@ -1,0 +1,424 @@
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+import {
+  prikazniIme,
+  razredPozicije,
+  KRATKA_POZICIJA,
+  formatirajTocke,
+  formatirajCeno,
+} from '../lib/pomozno'
+import { Link } from 'react-router-dom'
+import { POZICIJE } from '../lib/pravila'
+import { useTekmovanje } from '../lib/tekmovanje'
+import Grb from '../components/Grb'
+import type { Pozicija } from '../lib/tipi'
+
+/** Vrstica pogleda `player_season_standings` (+ igralci brez nastopov). */
+interface IgralecSezone {
+  id: number
+  full_name: string | null
+  position: Pozicija | null
+  team_id: number | null
+  team_name?: string | null
+  team_short?: string | null
+  team_logo?: string | null
+  value: number | null
+  season: string | null
+  points: number | null
+  form: number | null
+  last_round: number | null
+  points_per_match: number | null
+  points_per_value: number | null
+  owners: number | null
+  goals: number | null
+  minutes: number | null
+  matches: number | null
+  clean_sheets: number | null
+  rank: number | null
+}
+
+/** Vrstica pogleda `sezone`. */
+interface SezonaVrstica {
+  season: string
+  odigranih: number
+  tekoca: boolean
+}
+
+/** Kljuc stolpca, po katerem se razvrsca. */
+type Stolpec = keyof Pick<
+  IgralecSezone,
+  | 'points'
+  | 'form'
+  | 'last_round'
+  | 'points_per_match'
+  | 'points_per_value'
+  | 'value'
+  | 'goals'
+  | 'minutes'
+  | 'owners'
+>
+
+// Tabela vseh igralcev lige s tekočimi točkami — po kateremkoli stolpcu se da
+// razvrstiti, da je razvidno, kdo je v sezoni ali v zadnjih krogih najboljši.
+const STOLPCI: Array<{ kljuc: Stolpec; naslov: string; opis: string }> = [
+  { kljuc: 'points', naslov: 'Točke', opis: 'Skupaj v sezoni' },
+  { kljuc: 'form', naslov: 'Forma', opis: 'Zadnji trije krogi' },
+  { kljuc: 'last_round', naslov: 'Zadnji krog', opis: 'Točke zadnjega kroga' },
+  { kljuc: 'points_per_match', naslov: 'Na tekmo', opis: 'Točke na odigrano tekmo' },
+  { kljuc: 'points_per_value', naslov: 'Na M€', opis: 'Točke na milijon evrov cene' },
+  { kljuc: 'value', naslov: 'Cena', opis: 'Cena v proračunu (v milijonih €)' },
+  { kljuc: 'goals', naslov: 'Goli', opis: 'Doseženi goli' },
+  { kljuc: 'minutes', naslov: 'Minute', opis: 'Odigrane minute' },
+  { kljuc: 'owners', naslov: 'Izbran', opis: 'Št. fantasy ekip z igralcem' },
+]
+
+export default function Igralci() {
+  const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
+  const [igralci, setIgralci] = useState<IgralecSezone[]>([])
+  const [nalaganje, setNalaganje] = useState(true)
+  const [napaka, setNapaka] = useState<string | null>(null)
+  const [iskanje, setIskanje] = useState('')
+  const [filterPoz, setFilterPoz] = useState<Pozicija | 'vse'>('vse')
+  const [filterKlub, setFilterKlub] = useState<string>('vsi')
+  const [urejanje, setUrejanje] = useState<Stolpec>('points')
+  const [koliko, setKoliko] = useState(50)
+  const [sezone, setSezone] = useState<SezonaVrstica[]>([])
+  const [sezona, setSezona] = useState<string | null>(null)
+
+  // Sezone in prva stran lestvice gresta hkrati: čakanje na seznam sezon, da
+  // sploh vemo, katero lestvico naložiti, je podvojilo čas do prvega izrisa.
+  useEffect(() => {
+    if (!tekmovanjeId) return
+    const ligaId = tekmovanjeId
+    async function nalozi() {
+      const [{ data: vse, error }, { data: privzeta }] = await Promise.all([
+        supabase
+          .from('sezone')
+          .select('season, odigranih, tekoca')
+          .eq('competition_id', ligaId)
+          .order('season', { ascending: false }),
+        supabase
+          .from('player_season_standings')
+          .select(
+            'id, full_name, position, team_id, team_name, team_short, team_logo, value, season, points, form, last_round, points_per_match, points_per_value, owners, goals, minutes, matches, clean_sheets, rank',
+          )
+          .eq('competition_id', ligaId)
+          .order('points', { ascending: false })
+          .limit(500),
+      ])
+      if (error) return setNapaka(error.message)
+      const sezone = (vse ?? []) as SezonaVrstica[]
+      setSezone(sezone)
+      const izbrana =
+        (sezone.find((s) => s.tekoca && s.odigranih > 0) ??
+          sezone.find((s) => s.odigranih > 0) ??
+          sezone[0])?.season
+      setSezona(izbrana ?? null)
+      // Iz enega prenosa vzamemo vrstice izbrane sezone; ob preklopu sezone
+      // spodnji učinek po potrebi donese ostalo.
+      const zeImamo = ((privzeta ?? []) as IgralecSezone[]).filter(
+        (i) => i.season === izbrana,
+      )
+      if (zeImamo.length) {
+        setIgralci(zeImamo)
+        setNalaganje(false)
+      }
+      // Liga brez ene same odigrane tekme (sveže dodano tekmovanje, sezona
+      // pred prvim krogom) nima sezone, ki bi jo spodnji učinek naložil —
+      // brez tega bi stran za vedno obtičala na "Nalaganje …".
+      if (!izbrana) {
+        setIgralci([])
+        setNalaganje(false)
+      }
+    }
+    nalozi()
+  }, [tekmovanjeId])
+
+  useEffect(() => {
+    if (!sezona || !tekmovanjeId) return
+    setNalaganje(true)
+    const ligaId = tekmovanjeId
+    const izbranaSezona = sezona
+    const jeTekoca = sezone.find((s) => s.season === sezona)?.tekoca
+    ;(async () => {
+      const { data: standings, error } = await supabase
+        .from('player_season_standings')
+        .select(
+          'id, full_name, position, team_id, team_name, team_short, team_logo, value, season, points, form, last_round, points_per_match, points_per_value, owners, goals, minutes, matches, clean_sheets, rank',
+        )
+        .eq('competition_id', ligaId)
+        .eq('season', izbranaSezona)
+        .order('points', { ascending: false })
+      if (error) {
+        setNapaka(error.message)
+        setNalaganje(false)
+        return
+      }
+
+      // Za TEKOČO sezono pokažimo tudi na novo registrirane igralce, ki
+      // še nimajo nastopov — sicer novi igralec (npr. sveži prestop) ne
+      // bo viden na tej strani, dokler ne odigra prve tekme.
+      let vsi = (standings ?? []) as IgralecSezone[]
+      if (jeTekoca) {
+        const { data: aktivni } = await supabase
+          .from('players')
+          .select(
+            'id, full_name, position, team_id, value, active, teams!inner(name, short_name, logo_url)',
+          )
+          .eq('competition_id', ligaId)
+          .eq('active', true)
+        const znani = new Set(vsi.map((i) => i.id))
+        const brezStatistike: IgralecSezone[] = ((aktivni ?? []) as any[])
+          .filter((p) => !znani.has(p.id))
+          .map((p) => ({
+            id: p.id,
+            full_name: p.full_name,
+            position: p.position,
+            team_id: p.team_id,
+            team_name: p.teams?.name,
+            team_short: p.teams?.short_name,
+            team_logo: p.teams?.logo_url,
+            value: p.value,
+            season: izbranaSezona,
+            points: 0,
+            form: 0,
+            last_round: 0,
+            points_per_match: 0,
+            points_per_value: 0,
+            owners: 0,
+            goals: 0,
+            minutes: 0,
+            matches: 0,
+            clean_sheets: 0,
+            rank: null,
+          }))
+        vsi = [...vsi, ...brezStatistike]
+      }
+      setIgralci(vsi)
+      setNalaganje(false)
+    })()
+  }, [sezona, sezone, tekmovanjeId])
+
+  const klubi = useMemo(() => {
+    const m = new Map()
+    for (const i of igralci) if (i.team_name) m.set(i.team_id, i.team_name)
+    return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'sl'))
+  }, [igralci])
+
+  const vidni = useMemo(() => {
+    const f = igralci.filter((i) => {
+      if (filterPoz !== 'vse' && i.position !== filterPoz) return false
+      if (filterKlub !== 'vsi' && String(i.team_id) !== filterKlub) return false
+      if (
+        iskanje &&
+        !(i.full_name ?? '').toLowerCase().includes(iskanje.toLowerCase())
+      )
+        return false
+      return true
+    })
+    return [...f].sort(
+      (a, b) => Number(b[urejanje] ?? 0) - Number(a[urejanje] ?? 0),
+    )
+  }, [igralci, iskanje, filterPoz, filterKlub, urejanje])
+
+  const sezonaPodatki = sezone.find((s) => s.season === sezona)
+  const jeLanska = Boolean(sezonaPodatki) && !sezonaPodatki?.tekoca
+
+  if (nalaganje)
+    return <p className="animiraj-utrip text-slate-400">Nalaganje …</p>
+  if (napaka) return <p className="text-rose-400">Napaka: {napaka}</p>
+
+  const ekip = igralci.length
+    ? Math.max(...igralci.map((i) => Number(i.owners ?? 0)), 1)
+    : 1
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h1 className="text-2xl font-black naslov sm:text-3xl">
+          Igralci
+          {tekmovanje?.short_name
+            ? ` — ${tekmovanje.short_name.toLowerCase()}`
+            : ''}
+        </h1>
+        <p className="mt-1 text-sm text-slate-400">
+          Statistika iz uradnih zapisnikov MNZ Gorenjska. Klikni stolpec za
+          razvrstitev.
+        </p>
+      </div>
+
+      {/* Sezona — brez tega ni jasno, ali gledaš letošnjo ali lansko statistiko. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {sezone.map((s) => (
+          <button
+            key={s.season}
+            onClick={() => setSezona(s.season)}
+            className={`rounded-xl px-3 py-1.5 text-sm font-semibold transition ${
+              sezona === s.season
+                ? 'bg-gnl-500 text-slate-950'
+                : 'kartica text-slate-300'
+            }`}
+          >
+            {s.season}
+            {s.tekoca && (
+              <span className="ml-1.5 text-[10px] font-black uppercase opacity-70">
+                tekoča
+              </span>
+            )}
+          </button>
+        ))}
+        {sezonaPodatki && (
+          <span className="text-xs text-slate-500">
+            {sezonaPodatki.odigranih === 0
+              ? 'sezona se še ni začela — spodaj ni podatkov'
+              : `${sezonaPodatki.odigranih} odigranih tekem`}
+          </span>
+        )}
+      </div>
+
+      {jeLanska && (
+        <p className="kartica border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-200">
+          To je statistika sezone <strong>{sezona}</strong>, ne tekoče. Cene
+          igralcev v fantasy ligi izhajajo prav iz nje, dokler nova sezona ne
+          nabere dovolj tekem.
+        </p>
+      )}
+
+      <div className="kartica flex flex-wrap gap-2 p-3">
+        <input
+          value={iskanje}
+          onChange={(e) => setIskanje(e.target.value)}
+          placeholder="Išči po imenu …"
+          className="min-w-40 flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+        />
+        <select
+          value={filterKlub}
+          onChange={(e) => setFilterKlub(e.target.value)}
+          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+        >
+          <option value="vsi">Vsi klubi</option>
+          {klubi.map(([id, ime]) => (
+            <option key={id} value={id}>
+              {ime}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterPoz}
+          onChange={(e) => setFilterPoz(e.target.value as Pozicija | 'vse')}
+          className="rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+        >
+          <option value="vse">Vse pozicije</option>
+          {Object.entries(POZICIJE).map(([k, p]) => (
+            <option key={k} value={k}>
+              {p.naslov}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="kartica overflow-x-auto">
+        <table className="w-full min-w-[46rem] text-sm">
+          <thead>
+            <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-slate-400">
+              <th className="px-3 py-2 text-left font-semibold">#</th>
+              <th className="px-3 py-2 text-left font-semibold">Igralec</th>
+              {STOLPCI.map((s) => (
+                <th key={s.kljuc} className="px-2 py-2 text-right font-semibold">
+                  <button
+                    onClick={() => setUrejanje(s.kljuc)}
+                    title={s.opis}
+                    className={`whitespace-nowrap transition hover:text-white ${
+                      urejanje === s.kljuc ? 'text-gnl-300' : ''
+                    }`}
+                  >
+                    {s.naslov}
+                    {urejanje === s.kljuc ? ' ↓' : ''}
+                  </button>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {vidni.slice(0, koliko).map((i, idx) => (
+              <tr
+                key={i.id}
+                className="border-b border-white/5 transition hover:bg-white/5"
+              >
+                <td className="px-3 py-2 text-xs font-black text-slate-600">
+                  {idx + 1}
+                </td>
+                <td className="px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <Grb
+                      ime={i.team_name}
+                      kratko={i.team_short}
+                      logo={i.team_logo}
+                      velikost={24}
+                    />
+                    <span className={`znacka ${razredPozicije(i.position)}`}>
+                      {(i.position && KRATKA_POZICIJA[i.position]) ?? '?'}
+                    </span>
+                    <div className="min-w-0">
+                      <Link
+                        to={`/igralec/${i.id}`}
+                        className="block truncate font-semibold hover:text-gnl-300"
+                      >
+                        {prikazniIme(i.full_name)}
+                      </Link>
+                      <div className="text-xs text-slate-500">
+                        {i.team_short} · {i.matches} tekem
+                      </div>
+                    </div>
+                  </div>
+                </td>
+                <td className="px-2 py-2 text-right font-black tabular-nums">
+                  {formatirajTocke(i.points)}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-300">
+                  {formatirajTocke(i.form)}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-300">
+                  {formatirajTocke(i.last_round)}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                  {formatirajTocke(i.points_per_match)}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                  {formatirajTocke(i.points_per_value)}
+                </td>
+                <td className="px-2 py-2 text-right font-bold tabular-nums text-gnl-300">
+                  {formatirajCeno(i.value)}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                  {i.goals}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                  {i.minutes}
+                </td>
+                <td className="px-2 py-2 text-right tabular-nums text-slate-400">
+                  {i.owners}
+                  <span className="ml-1 text-xs text-slate-600">
+                    ({Math.round((Number(i.owners ?? 0) / ekip) * 100)}%)
+                  </span>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {vidni.length > koliko ? (
+        <div className="text-center">
+          <button onClick={() => setKoliko(koliko + 50)} className="gumb-tih">
+            Pokaži več ({vidni.length - koliko})
+          </button>
+        </div>
+      ) : (
+        <p className="text-center text-xs text-slate-500">
+          Prikazanih vseh {vidni.length} igralcev.
+        </p>
+      )}
+    </div>
+  )
+}

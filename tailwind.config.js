@@ -1,6 +1,9 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  content: ['./index.html', './src/**/*.{js,jsx}'],
+  // .ts/.tsx morata biti zraven: Tailwind razrede pobira iz izvorne kode in
+  // ob migraciji na TypeScript bi bili vsi razredi iz pretvorjenih datotek
+  // odstranjeni — build in typecheck bi bila zelena, stran pa brez slogov.
+  content: ['./index.html', './src/**/*.{js,jsx,ts,tsx}'],
   theme: {
     extend: {
       colors: {

@@ -1,0 +1,37 @@
+{
+  // Postopna migracija na TypeScript: JS in TS datoteke sobivajo.
+  // `allowJs` pusti obstoječe .js/.jsx pri miru, `checkJs` je izklopljen,
+  // da nepretvorjene datoteke ne javljajo napak. Ko je datoteka pretvorjena
+  // v .ts/.tsx, zanjo velja polni `strict`.
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+
+    /* Vite sam prevaja — tsc je tu samo za preverjanje tipov. */
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "jsx": "react-jsx",
+
+    /* Sobivanje z obstojeco JS kodo. */
+    "allowJs": true,
+    "checkJs": false,
+
+    /* Strogost za nove TS datoteke. */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "paths": {
+      "@/*": ["./src/*"]
+    }
+  },
+  "include": ["src"]
+}
