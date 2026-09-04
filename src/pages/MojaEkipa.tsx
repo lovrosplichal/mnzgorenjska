@@ -18,7 +18,6 @@ import {
   prikazniIme,
   razredPozicije,
   KRATKA_POZICIJA,
-  formatirajTocke,
   formatirajCeno,
 } from '../lib/pomozno'
 import { useTekmovanje } from '../lib/tekmovanje'
@@ -26,37 +25,80 @@ import Igrisce from '../components/Igrisce'
 import Grb from '../components/Grb'
 import Odstevanje from '../components/Odstevanje'
 import EnajstericaNaIgriscu from '../components/EnajstericaNaIgriscu'
+import type { IgralecNaIgriscu } from '../components/Igrisce'
+import type { Pozicija } from '../lib/tipi'
+
+/** Igralec na trgu (`player_overview` / `player_season_standings`). */
+interface IgralecTrga {
+  id: number
+  full_name: string | null
+  position: Pozicija | null
+  team_id: number | null
+  team_name?: string | null
+  team_short?: string | null
+  team_logo?: string | null
+  value: number | null
+  points?: number | null
+  form?: number | null
+  minutes?: number | null
+  goals?: number | null
+  active?: boolean | null
+  [k: string]: any
+}
+
+/** Vrstica kadra, kakor jo hrani stran pred shranjevanjem. */
+interface VrsticaKadra {
+  player_id: number
+  is_starter: boolean
+  is_captain: boolean
+  is_vice: boolean
+  buy_value: number
+  buy_position: Pozicija | null
+  bench_order?: number | null
+}
+
+/** Krog s rokom. */
+interface KrogRok {
+  id: number
+  number: number | null
+  season?: string | null
+  played_on?: string | null
+  deadline_at?: string | null
+}
 
 export default function MojaEkipa() {
   const { session, loading } = useAuth()
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
-  const [ekipa, setEkipa] = useState(null)
+  const [ekipa, setEkipa] = useState<any | null>(null)
   const [imeEkipe, setImeEkipe] = useState('')
-  const [igralci, setIgralci] = useState([])
-  const [izbrani, setIzbrani] = useState([])
+  const [igralci, setIgralci] = useState<IgralecTrga[]>([])
+  const [izbrani, setIzbrani] = useState<VrsticaKadra[]>([])
   // Set player_id-jev, ki so bili v DB ob nalaganju. Nujno za izračun
   // "denar od prodaje" — sprememba glede na ta izhodiščni stanje pove,
   // koliko denarja se osvobodi (odstranjeni) oz. porabi (dodani).
-  const [zacetniIds, setZacetniIds] = useState(new Set())
-  const [krogi, setKrogi] = useState([])
-  const [naslednjiKrog, setNaslednjiKrog] = useState(null)
-  const [zadnjiKrog, setZadnjiKrog] = useState(null)
-  const [tockeZadnjiKrog, setTockeZadnjiKrog] = useState({}) // player_id → points
-  const [posnetkiPoKrogih, setPosnetkiPoKrogih] = useState([]) // [{krog, igralci}]
-  const [zgodovinaKrogId, setZgodovinaKrogId] = useState(null)
-  const [pripomocki, setPripomocki] = useState([])
-  const [zaklenjenaPostava, setZaklenjenaPostava] = useState(null)
+  const [zacetniIds, setZacetniIds] = useState<Set<number>>(new Set())
+  const [krogi, setKrogi] = useState<KrogRok[]>([])
+  const [naslednjiKrog, setNaslednjiKrog] = useState<KrogRok | null>(null)
+  const [zadnjiKrog, setZadnjiKrog] = useState<KrogRok | null>(null)
+  // player_id -> tocke zadnjega kroga
+  const [tockeZadnjiKrog, setTockeZadnjiKrog] = useState<Record<string, number>>(
+    {},
+  )
+  const [posnetkiPoKrogih, setPosnetkiPoKrogih] = useState<any[]>([])
+  const [zgodovinaKrogId, setZgodovinaKrogId] = useState<number | null>(null)
+  const [pripomocki, setPripomocki] = useState<any[]>([])
+  const [zaklenjenaPostava, setZaklenjenaPostava] = useState<any | null>(null)
   const [pravila, setPravila] = useState({ prosti: 3, kazen: 4 })
   const [izbranKrog, setIzbranKrog] = useState('')
   const [nalaganje, setNalaganje] = useState(true)
-  const [sporocilo, setSporocilo] = useState(null)
-  const [napaka, setNapaka] = useState(null)
-  const [filterKlub, setFilterKlub] = useState('vsi')
-  const [filterPoz, setFilterPoz] = useState('vse')
+  const [sporocilo, setSporocilo] = useState<string | null>(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
+  const [filterKlub, setFilterKlub] = useState<string>('vsi')
+  const [filterPoz, setFilterPoz] = useState<Pozicija | 'vse'>('vse')
   const [iskanje, setIskanje] = useState('')
   // Na telefonu je trg predal, ki se odpre ob kliku na prazno mesto.
   const [odprtTrg, setOdprtTrg] = useState(false)
-  const imeRef = useRef(null)
+  const imeRef = useRef<HTMLInputElement | null>(null)
 
   // Sporocilo o uspehu shrani samo za nekaj sekund — kot toast. Napake pustimo,
   // dokler jih uporabnik ne odpravi.
@@ -87,23 +129,23 @@ export default function MojaEkipa() {
     // le izhodiščni ceni. Dokler igralec letos še ni igral, ob njih izpišemo
     // lansko, izrecno označeno: po prvem krogu so sicer vse ničle, mladinec z
     // lansko generacijo pa ne sme izgledati boljši, kot letos je.
-    async function zStatistikoSezone(seznam, sezone) {
+    async function zStatistikoSezone(seznam: any[], sezone: any[]) {
       const letos = (
-        sezone.find((s) => s.tekoca && s.odigranih > 0) ??
-        sezone.find((s) => s.odigranih > 0) ??
+        sezone.find((s: any) => s.tekoca && s.odigranih > 0) ??
+        sezone.find((s: any) => s.odigranih > 0) ??
         sezone[0]
       )?.season
       if (!letos) return seznam
       const lani = sezone.find(
-        (s) => s.season !== letos && s.odigranih > 0,
+        (s: any) => s.season !== letos && s.odigranih > 0,
       )?.season
 
-      const zaSezono = (sezona) =>
+      const zaSezono = (sezona?: string | null) =>
         sezona
           ? supabase
               .from('player_season_standings')
               .select('id, goals, minutes')
-              .eq('competition_id', tekmovanjeId)
+              .eq('competition_id', tekmovanjeId as number)
               .eq('season', sezona)
           : Promise.resolve({ data: [] })
 
@@ -138,23 +180,23 @@ export default function MojaEkipa() {
           .select(
             'id, full_name, position, team_id, team_name, team_short, team_logo, value, points, goals, minutes, active',
           )
-          .eq('competition_id', tekmovanjeId)
+          .eq('competition_id', tekmovanjeId as number)
           .order('value', { ascending: false }),
         supabase
           .from('rounds')
           .select('id, season, number, played_on, deadline_at')
-          .eq('competition_id', tekmovanjeId)
+          .eq('competition_id', tekmovanjeId as number)
           .order('number', { ascending: true }),
         supabase
           .from('naslednji_krog')
           .select('id, number, played_on, deadline_at')
-          .eq('competition_id', tekmovanjeId)
+          .eq('competition_id', tekmovanjeId as number)
           .maybeSingle(),
         supabase
           .from('fantasy_teams')
           .select('id, name, budget, cash')
-          .eq('owner_id', session.user.id)
-          .eq('competition_id', tekmovanjeId)
+          .eq('owner_id', session!.user.id)
+          .eq('competition_id', tekmovanjeId as number)
           .maybeSingle(),
         supabase
           .from('settings')
@@ -163,7 +205,7 @@ export default function MojaEkipa() {
         supabase
           .from('sezone')
           .select('season, odigranih, tekoca')
-          .eq('competition_id', tekmovanjeId)
+          .eq('competition_id', tekmovanjeId as number)
           .order('season', { ascending: false }),
       ])
       if (error) {
@@ -173,7 +215,9 @@ export default function MojaEkipa() {
       }
       setIgralci(await zStatistikoSezone(vsi ?? [], sezone ?? []))
       setKrogi(vsiKrogi ?? [])
-      setNaslednjiKrog(naslednji ?? null)
+      setNaslednjiKrog(
+        naslednji && naslednji.id != null ? (naslednji as KrogRok) : null,
+      )
       if (nast?.length) {
         const m = Object.fromEntries(nast.map((n) => [n.key, Number(n.value)]))
         setPravila({
@@ -202,9 +246,9 @@ export default function MojaEkipa() {
               .eq('fantasy_team_id', moja.id)
               .order('round_id', { ascending: false }),
           ])
-        setIzbrani(nabor ?? [])
-        setZacetniIds(new Set((nabor ?? []).map((s) => s.player_id)))
-        setPripomocki(chips ?? [])
+        setIzbrani((nabor ?? []) as VrsticaKadra[])
+        setZacetniIds(new Set((nabor ?? []).map((x) => x.player_id)))
+        setPripomocki((chips ?? []) as any[])
         if (zadnjiPosnetek?.length) {
           const zadnjiKrog = zadnjiPosnetek[0].round_id
           setZaklenjenaPostava(
@@ -219,21 +263,23 @@ export default function MojaEkipa() {
         const { data: zadnji } = await supabase
           .from('zadnji_odigrani_krog')
           .select('id, number, season')
-          .eq('competition_id', tekmovanjeId)
+          .eq('competition_id', tekmovanjeId as number)
           .maybeSingle()
-        setZadnjiKrog(zadnji ?? null)
+        setZadnjiKrog(
+        zadnji && zadnji.id != null ? (zadnji as KrogRok) : null,
+      )
         if (zadnji && (nabor ?? []).length) {
           const { data: tocke } = await supabase
             .from('player_scores')
             .select('player_id, points')
-            .eq('round_id', zadnji.id)
+            .eq('round_id', zadnji.id as number)
             .in(
               'player_id',
-              nabor.map((s) => s.player_id),
+              (nabor ?? []).map((x) => x.player_id),
             )
           setTockeZadnjiKrog(
             Object.fromEntries(
-              (tocke ?? []).map((t) => [t.player_id, Number(t.points)]),
+              (tocke ?? []).map((t) => [String(t.player_id), Number(t.points)]),
             ),
           )
         }
@@ -372,13 +418,14 @@ export default function MojaEkipa() {
   const vKadru = poPozicijah(izbraniPodrobno)
 
   const klubi = useMemo(() => {
-    const m = new Map()
+    const m = new Map<number, string>()
     for (const i of igralci)
-      if (i.team_name && i.active !== false) m.set(i.team_id, i.team_name)
+      if (i.team_id != null && i.team_name && i.active !== false)
+        m.set(i.team_id, i.team_name)
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1], 'sl'))
   }, [igralci])
 
-  function dodaj(igralec) {
+  function dodaj(igralec: IgralecTrga) {
     setSporocilo(null)
     const razlog = zakajNeGre(igralec, izbraniPodrobno, preostalo)
     if (razlog) return setSporocilo(razlog)
@@ -398,17 +445,17 @@ export default function MojaEkipa() {
     ])
   }
 
-  function odstrani(igralec) {
+  function odstrani(igralec: IgralecTrga) {
     setSporocilo(null)
     setIzbrani(izbrani.filter((s) => s.player_id !== igralec.id))
   }
 
-  function preklopi(igralec) {
+  function preklopi(igralec: IgralecTrga) {
     if (izbrani.some((s) => s.player_id === igralec.id)) odstrani(igralec)
     else dodaj(igralec)
   }
 
-  function preklopiPrvo(igralec) {
+  function preklopiPrvo(igralec: IgralecNaIgriscu & { position?: Pozicija | null }) {
     setSporocilo(null)
     if (igralec.is_starter) {
       // Na klop; trak gre s seboj le, če ga ima kdo drug prevzeti.
@@ -435,7 +482,7 @@ export default function MojaEkipa() {
     )
   }
 
-  function nastaviTrak(playerId, polje) {
+  function nastaviTrak(playerId: string | number, polje: 'is_captain' | 'is_vice') {
     setIzbrani(
       izbrani.map((s) => ({
         ...s,
@@ -451,7 +498,7 @@ export default function MojaEkipa() {
     )
   }
 
-  function naPraznoMesto(koda) {
+  function naPraznoMesto(koda: Pozicija) {
     setFilterPoz(koda)
     setOdprtTrg(true)
   }
@@ -476,8 +523,8 @@ export default function MojaEkipa() {
       const { data, error } = await supabase
         .from('fantasy_teams')
         .insert({
-          owner_id: session.user.id,
-          competition_id: tekmovanjeId,
+          owner_id: session!.user.id,
+          competition_id: tekmovanjeId ?? undefined,
           name: imeEkipe.trim(),
         })
         .select('id, name, budget, cash')
@@ -512,10 +559,14 @@ export default function MojaEkipa() {
     })
     if (error) return setNapaka(error.message)
 
-    const novCash =
-      typeof rezultat === 'object' ? Number(rezultat?.cash ?? 0) : null
+    const izid = rezultat as {
+      cash?: number
+      dobicek?: number
+      strosek?: number
+    } | null
+    const novCash = izid && typeof izid === 'object' ? Number(izid.cash ?? 0) : null
     if (novCash != null) {
-      setEkipa((prej) => (prej ? { ...prej, cash: novCash } : prej))
+      setEkipa((prej: any) => (prej ? { ...prej, cash: novCash } : prej))
     }
 
     // Osveži lokalno stanje: zdaj so vsi izbrani "začetni" (pomeni: ni več
@@ -525,12 +576,12 @@ export default function MojaEkipa() {
       .select('player_id, is_starter, is_captain, is_vice, buy_value, buy_position')
       .eq('fantasy_team_id', ekipaId)
     if (svezRoster) {
-      setIzbrani(svezRoster)
-      setZacetniIds(new Set(svezRoster.map((s) => s.player_id)))
+      setIzbrani(svezRoster as VrsticaKadra[])
+      setZacetniIds(new Set(svezRoster.map((x) => x.player_id)))
     }
 
-    const dobicek = Number(rezultat?.dobicek ?? 0)
-    const strosek = Number(rezultat?.strosek ?? 0)
+    const dobicek = Number(izid?.dobicek ?? 0)
+    const strosek = Number(izid?.strosek ?? 0)
     const delta = dobicek - strosek
     if (delta > 0)
       setSporocilo(`Ekipa shranjena. Prodaja ti je prinesla +${delta.toFixed(1)} M. 💰`)
@@ -539,7 +590,7 @@ export default function MojaEkipa() {
     else setSporocilo('Ekipa je shranjena. 💾')
   }
 
-  async function vloziPripomocek(chip, krogId) {
+  async function vloziPripomocek(chip: string, krogId: number) {
     setNapaka(null)
     if (!ekipa?.id) return setNapaka('Najprej shrani ekipo.')
     if (!krogId) return setNapaka('Izberi krog, v katerem naj pripomoček velja.')
@@ -557,7 +608,7 @@ export default function MojaEkipa() {
     )
   }
 
-  async function prekliciPripomocek(chip) {
+  async function prekliciPripomocek(chip: any) {
     setNapaka(null)
     if (!ekipa?.id) return
     // Preklic je dovoljen SAMO dokler rok kroga še ni potekel. Ob roku se
@@ -604,7 +655,7 @@ export default function MojaEkipa() {
       return false
     if (filterKlub !== 'vsi' && String(i.team_id) !== filterKlub) return false
     if (filterPoz !== 'vse' && i.position !== filterPoz) return false
-    if (iskanje && !i.full_name.toLowerCase().includes(iskanje.toLowerCase()))
+    if (iskanje && !(i.full_name ?? '').toLowerCase().includes(iskanje.toLowerCase()))
       return false
     return true
   })
@@ -682,7 +733,7 @@ export default function MojaEkipa() {
         Moja ekipa
         {tekmovanje && (
           <span className="ml-2 align-middle text-base font-bold text-slate-500">
-            {tekmovanje.short_name.toLowerCase()}
+            {tekmovanje.short_name?.toLowerCase()}
           </span>
         )}
       </h1>
@@ -914,7 +965,7 @@ export default function MojaEkipa() {
           <Igrisce
             izbrani={izbraniPodrobno}
             naPreklopPrvo={preklopiPrvo}
-            naOdstrani={odstrani}
+            naOdstrani={(i) => odstrani(i as IgralecTrga)}
             naPraznoMesto={naPraznoMesto}
           />
 
@@ -954,13 +1005,13 @@ export default function MojaEkipa() {
           {zadnjiKrog &&
             Object.keys(tockeZadnjiKrog).length > 0 &&
             (!tekmovanje?.prvi_fantasy_krog ||
-              zadnjiKrog.number >= tekmovanje.prvi_fantasy_krog) && (
+              Number(zadnjiKrog.number ?? 0) >= tekmovanje.prvi_fantasy_krog) && (
               <section className="kartica p-3 text-sm sm:p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-slate-400">
                     Zdajšnja postava bi v{' '}
                     <strong className="text-slate-200">
-                      {zadnjiKrog.number}. krogu
+                      {zadnjiKrog.number ?? 0}. krogu
                     </strong>{' '}
                     ({zadnjiKrog.season}) prinesla
                   </span>
@@ -1153,7 +1204,7 @@ export default function MojaEkipa() {
                     ))}
                   </select>
                   <button
-                    onClick={() => vloziPripomocek('klop_plus', izbranKrog)}
+                    onClick={() => vloziPripomocek('klop_plus', Number(izbranKrog))}
                     className="gumb-tih"
                   >
                     Vloži
@@ -1214,7 +1265,10 @@ export default function MojaEkipa() {
               ) : (
                 <button
                   onClick={() =>
-                    vloziPripomocek('wildcard', naslednjiKrog?.id ?? izbranKrog)
+                    vloziPripomocek(
+                      'wildcard',
+                      Number(naslednjiKrog?.id ?? izbranKrog),
+                    )
                   }
                   className="gumb-tih w-full"
                 >
@@ -1266,9 +1320,11 @@ export default function MojaEkipa() {
                   (p) => p.round_id === zgodovinaKrogId,
                 )
                 if (!izbrani) return null
-                const starterji = izbrani.igralci.filter((i) => i.is_starter)
+                const starterji = izbrani.igralci.filter(
+                  (i: any) => i.is_starter,
+                )
                 const skupaj = starterji.reduce(
-                  (v, s) =>
+                  (v: number, s: any) =>
                     v +
                     Number(s.points ?? 0) *
                       (s.is_captain ? KAPETAN_MNOZITELJ : 1),
@@ -1284,7 +1340,10 @@ export default function MojaEkipa() {
                       </strong>
                     </div>
                     <EnajstericaNaIgriscu
-                      igralci={starterji.map((s) => ({ ...s, position: s.position }))}
+                      igralci={starterji.map((s: any) => ({
+                        ...s,
+                        position: s.position,
+                      }))}
                     />
                   </>
                 )
@@ -1424,8 +1483,23 @@ function TrgIgralcev({
   setFilterPoz,
   naPreklop,
   mobilno = false,
+}: {
+  vidni: IgralecTrga[]
+  izbrani: VrsticaKadra[]
+  izbraniPodrobno: IgralecTrga[]
+  preostalo: number
+  vKadru: Record<string, number>
+  klubi: Array<[number, string]>
+  iskanje: string
+  setIskanje: (v: string) => void
+  filterKlub: string
+  setFilterKlub: (v: string) => void
+  filterPoz: Pozicija | 'vse'
+  setFilterPoz: (v: Pozicija | 'vse') => void
+  naPreklop: (i: IgralecTrga) => void
+  mobilno?: boolean
 }) {
-  const iskanjeRef = useRef(null)
+  const iskanjeRef = useRef<HTMLInputElement | null>(null)
   useEffect(() => {
     // Na mobilnem uporabnik odpre predal, ker točno ve, koga išče —
     // tipkovnica naj bo pripravljena. Na desktopu tega ne rabimo.
@@ -1523,7 +1597,7 @@ function TrgIgralcev({
             ? null
             : zakajNeGre(i, izbraniPodrobno, preostalo)
           const statLetos =
-            i.minutes > 0
+            Number(i.minutes ?? 0) > 0
               ? `${i.goals} G · ${i.minutes} min`
               : i.goli_lani > 0
                 ? `lani ${i.goli_lani} G`
@@ -1543,7 +1617,7 @@ function TrgIgralcev({
                   velikost={22}
                 />
                 <span className={`znacka shrink-0 ${razredPozicije(i.position)}`}>
-                  {KRATKA_POZICIJA[i.position] ?? '?'}
+                  {(i.position && KRATKA_POZICIJA[i.position]) ?? '?'}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold">
@@ -1591,7 +1665,7 @@ function TrgIgralcev({
   )
 }
 
-function Rok({ krog }) {
+function Rok({ krog }: { krog: KrogRok }) {
   const rok = krog.deadline_at ? new Date(krog.deadline_at) : null
   const zapadel = rok ? rok.getTime() <= Date.now() : false
   return (
@@ -1625,7 +1699,17 @@ function Rok({ krog }) {
   )
 }
 
-function IzborTraku({ oznaka, vrednost, moznosti, naIzbor }) {
+function IzborTraku({
+  oznaka,
+  vrednost,
+  moznosti,
+  naIzbor,
+}: {
+  oznaka: string
+  vrednost: string | number
+  moznosti: Array<{ id: number | string; full_name?: string | null }>
+  naIzbor: (v: string) => void
+}) {
   return (
     <label className="flex items-center gap-2 text-sm">
       <span className="w-24 shrink-0 text-slate-400 sm:w-28">{oznaka}</span>
@@ -1645,17 +1729,3 @@ function IzborTraku({ oznaka, vrednost, moznosti, naIzbor }) {
   )
 }
 
-function Merilo({ oznaka, vrednost, barva }) {
-  return (
-    <div>
-      <div
-        className={`text-xl font-black tabular-nums sm:text-2xl ${barva ?? ''}`}
-      >
-        {vrednost}
-      </div>
-      <div className="text-[10px] uppercase tracking-wide text-slate-500 sm:text-xs">
-        {oznaka}
-      </div>
-    </div>
-  )
-}
