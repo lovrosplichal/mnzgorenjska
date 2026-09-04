@@ -76,14 +76,17 @@ Uvozne skripte sprejmejo `--tekmovanje mladinci` (privzeto `clani`).
 - Preden dodaš novo odvisnost, preveri ali je res potrebna.
 - Ob spremembi podatkovnega modela posodobi tudi README in to datoteko.
 
-## TypeScript (postopna migracija)
+## TypeScript
 
-Projekt prehaja na TypeScript **datoteko po datoteko**. `allowJs` je vklopljen,
-zato `.js`/`.jsx` in `.ts`/`.tsx` sobivajo — nepretvorjene datoteke se ne
-preverjajo (`checkJs: false`), pretvorjene pa v celoti (`strict: true`).
+Ves `src/` je TypeScript (`strict`). `allowJs` ostaja vklopljen samo zato, da
+skripte iz `scripts/` lahko uvazajo iz `src/lib` — v `src/` ni vec nobene
+`.js` ali `.jsx` datoteke.
 
-Pretvorjeno do zdaj: `src/lib/*`, `src/main.tsx`, `src/App.tsx`.
-Ostane: `src/components/*` in `src/pages/*`.
+**Tailwind mora poznati `.ts`/`.tsx`.** V `tailwind.config.js` je `content`
+`['./index.html', './src/**/*.{js,jsx,ts,tsx}']`. Ce se koncnica izgubi,
+Tailwind razredov iz teh datotek ne najde in jih izpusti iz CSS — build,
+`npm run typecheck` in `npm run smoke` ostanejo zeleni, stran pa je brez
+slogov. To se je med migracijo ze zgodilo.
 
 - Tipe vrstic **ne piši na roko** — generira jih baza:
   `npm run tipi` zapiše `src/lib/baza.types.ts` iz lokalnih migracij.
