@@ -11,7 +11,10 @@
     "db:reset": "supabase db reset",
     "db:start": "supabase start",
     "db:stop": "supabase stop",
-    "smoke": "vite-node scripts/smoke.jsx"
+    "smoke": "vite-node scripts/smoke.jsx",
+    "typecheck": "tsc --noEmit",
+    "tipi": "supabase gen types typescript --local > src/lib/baza.types.ts",
+    "testno-okolje": "bash scripts/testno-okolje.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
@@ -20,10 +23,14 @@
     "react-router-dom": "^7.18.2"
   },
   "devDependencies": {
+    "@types/node": "^26.4.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
     "@vitejs/plugin-react": "^6.1.0",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.41",
     "tailwindcss": "^3.4.10",
+    "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vite-node": "^6.0.0"
   }
