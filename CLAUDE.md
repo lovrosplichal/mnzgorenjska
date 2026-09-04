@@ -15,7 +15,7 @@ vratarja z (V), postave pa našteje po številkah dresov). Prag je 5 glasov.
 
 ## Tehnološki sklop
 
-- Frontend: React + Vite + Tailwind CSS
+- Frontend: React + Vite + Tailwind CSS, **postopno v TypeScriptu**
 - Backend / baza / avtentikacija: Supabase (PostgreSQL)
 - Gostovanje: Vercel + Supabase
 
@@ -38,7 +38,7 @@ igra v kateri ligi, pove pogled `competition_teams`.
 `competitions.prvi_fantasy_krog` pove, od katerega kroga liga šteje za fantasy
 (mladinci od 2., ker se do takrat še vrstijo prestopi in prehodi med člane).
 Vsi pogledi imajo stolpec `competition_id`; vmesnik izbrano ligo hrani v
-`src/lib/tekmovanje.jsx` in jo doda v naslov kot `?t=mladinci`.
+`src/lib/tekmovanje.tsx` in jo doda v naslov kot `?t=mladinci`.
 
 Uvozne skripte sprejmejo `--tekmovanje mladinci` (privzeto `clani`).
 
@@ -76,6 +76,25 @@ Uvozne skripte sprejmejo `--tekmovanje mladinci` (privzeto `clani`).
 - Preden dodaš novo odvisnost, preveri ali je res potrebna.
 - Ob spremembi podatkovnega modela posodobi tudi README in to datoteko.
 
+## TypeScript (postopna migracija)
+
+Projekt prehaja na TypeScript **datoteko po datoteko**. `allowJs` je vklopljen,
+zato `.js`/`.jsx` in `.ts`/`.tsx` sobivajo — nepretvorjene datoteke se ne
+preverjajo (`checkJs: false`), pretvorjene pa v celoti (`strict: true`).
+
+Pretvorjeno do zdaj: `src/lib/*`, `src/main.tsx`, `src/App.tsx`.
+Ostane: `src/components/*` in `src/pages/*`.
+
+- Tipe vrstic **ne piši na roko** — generira jih baza:
+  `npm run tipi` zapiše `src/lib/baza.types.ts` iz lokalnih migracij.
+  Po vsaki novi migraciji jo poženi znova in datoteke ne popravljaj ročno.
+- `supabase` odjemalec je tipiziran z `Database`, zato napačno ime tabele
+  javi napako že pri `npm run typecheck`.
+- Pojmi, ki jih shema ne pozna (`Pozicija`, `IgralecVKadru` …), so v
+  `src/lib/tipi.ts`.
+- Uvozne skripte (`scripts/*.mjs`) ostajajo v JavaScriptu. Node 26 zna brati
+  `.ts` neposredno, zato smejo uvažati iz `src/lib` (glej `zdruzi-klube.mjs`).
+
 ## Ukazi
 
 ```bash
@@ -85,10 +104,28 @@ npm run dev         # razvojni strežnik
 npm run build       # produkcijski build
 npm test            # e2e test proti bazi (RLS, glasovanje, točke, lestvica)
 npm run smoke       # izris vseh strani + pravila ekipe, brez brskalnika
+npm run typecheck   # preverjanje tipov (tsc --noEmit)
+npm run tipi        # regeneriraj src/lib/baza.types.ts iz lokalne baze
 ```
 
 `npm test` naj teče s `SUPABASE_SERVICE_ROLE_KEY` v okolju — brez njega ne more
 povrniti asistence in pozicije, ki ju potrdi z glasovi, in naslednji zagon pade.
+
+`npm test` je idempotenten — poganjaj ga zaporedoma, kolikorkrat hočeš.
+Da tak tudi ostane, veljata dve pravili:
+
+- **Vsak `.limit(1)` potrebuje `.order(...)`.** Brez njega Postgres vrne
+  poljubno vrstico in test dobi vsakič drugega igralca ali krog: enkrat pade,
+  drugič ne, koda pa je ves čas ista. Pri krogih `.order('number')` ni dovolj —
+  številko 1 ima vsaka sezona, zato filtriraj še po `deadline_at`.
+- **Kar test spremeni, mora tudi povrniti.** Posebej `zakleni_krog` naredi
+  posnetke postav za vse ekipe; e2e si zapomni čas zaklepa in jih ob koncu
+  pobriše, sicer naslednji zagon kroga ne vidi več kot "brez posnetka".
+
+Testno okolje mora imeti uvoženo **tekočo** sezono, ne le arhiva:
+`preracunaj_igralca` osveži samo kroge znotraj okna (14 dni, migracija
+20260902110000), zato na sami arhivski sezoni točke ne dohitijo pozicije.
+`npm run testno-okolje` poskrbi za oboje.
 
 Uvoz podatkov (vsi sprejmejo `SUPABASE_URL` za projekt v oblaku):
 
@@ -122,7 +159,7 @@ deaktivira (pri mladincih vsako leto odide cela generacija).
 - Po spremembi sheme ali RLS poženi še `npm test`.
 - Ob spremembi podatkovnega modela **dodaj novo migracijo** v `supabase/migrations/`;
   obstoječih migracij ne spreminjaj, ker so že uporabljene.
-- Pravila sestave ekipe so na enem mestu v `src/lib/pravila.js` — spreminjaj jih tam,
+- Pravila sestave ekipe so na enem mestu v `src/lib/pravila.ts` — spreminjaj jih tam,
   ne razpršeno po komponentah.
 - Vsaka nova poizvedba na strani mora filtrirati po `competition_id`, sicer
   stran pokaže obe ligi hkrati. `useTekmovanje().id` je `null`, dokler se
