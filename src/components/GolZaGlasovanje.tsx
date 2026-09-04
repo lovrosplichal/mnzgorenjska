@@ -35,6 +35,8 @@ export interface Tekma {
 export interface Kandidat {
   player_id: number
   shirt_number?: number | null
+  team_id?: number | null
+  minutes_played?: number | null
   players?: { full_name?: string | null; position?: Pozicija | null } | null
 }
 

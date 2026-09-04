@@ -8,46 +8,56 @@ import GolZaGlasovanje, {
   PRAG_ASISTENCE,
   caka,
 } from '../components/GolZaGlasovanje'
+import type { Gol, Glas, Kandidat } from '../components/GolZaGlasovanje'
+import type { TekmaVrstica } from '../lib/tipi'
 
 
 export default function Glasovanje() {
   const { session, loading } = useAuth()
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
-  const [tekme, setTekme] = useState([])
-  const [krogId, setKrogId] = useState(null)
-  const [sezona, setSezona] = useState(null)
-  const [tekmaId, setTekmaId] = useState(null)
-  const [goli, setGoli] = useState([])
-  const [igralci, setIgralci] = useState([])
-  const [glasovi, setGlasovi] = useState({}) // goal_id -> [{player_id, votes}]
-  const [mojiGlasovi, setMojiGlasovi] = useState({}) // goal_id -> player_id
+  const [tekme, setTekme] = useState<TekmaVrstica[]>([])
+  const [krogId, setKrogId] = useState<number | null>(null)
+  const [sezona, setSezona] = useState<string | null>(null)
+  const [tekmaId, setTekmaId] = useState<number | null>(null)
+  const [goli, setGoli] = useState<Gol[]>([])
+  const [igralci, setIgralci] = useState<Kandidat[]>([])
+  // goal_id -> glasovi, razvrsceni padajoce
+  const [glasovi, setGlasovi] = useState<Record<string, Glas[]>>({})
+  // goal_id -> igralec, za katerega sem glasoval
+  const [mojiGlasovi, setMojiGlasovi] = useState<Record<string, number | null>>(
+    {},
+  )
   const [nalaganje, setNalaganje] = useState(true)
-  const [napaka, setNapaka] = useState(null)
-  const [pravkarOddan, setPravkarOddan] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
+  const [pravkarOddan, setPravkarOddan] = useState<number | null>(null)
 
   // Vse odigrane tekme naenkrat — samo TEKOČA sezona. Lanska liga ni bila
   // fantasy-aktivna, zato bi glasovanje o lanskih asistencah bilo brez smisla.
   useEffect(() => {
     if (!tekmovanjeId) return
     setNalaganje(true)
+    const ligaId = tekmovanjeId
     async function nalozi() {
       const [{ data, error }, { data: sez }] = await Promise.all([
         supabase
           .from('match_assist_status')
           .select('*')
-          .eq('competition_id', tekmovanjeId)
+          .eq('competition_id', ligaId)
           .order('played_on', { ascending: false }),
         supabase
           .from('sezone')
           .select('season, tekoca')
-          .eq('competition_id', tekmovanjeId),
+          .eq('competition_id', ligaId),
       ])
       if (error) setNapaka(error.message)
-      const tekocaSez = (sez ?? []).find((s) => s.tekoca)?.season ?? null
-      const samoTekoca = (data ?? []).filter((t) => t.season === tekocaSez)
+      const tekocaSez =
+        ((sez ?? []) as any[]).find((x) => x.tekoca)?.season ?? null
+      const samoTekoca = ((data ?? []) as TekmaVrstica[]).filter(
+        (t) => t.season === tekocaSez,
+      )
       setTekme(samoTekoca)
       setSezona(tekocaSez)
-      const cakajoc = samoTekoca.find((t) => t.brez_asistence > 0)
+      const cakajoc = samoTekoca.find((t) => Number(t.brez_asistence ?? 0) > 0)
       setKrogId(cakajoc?.round_id ?? samoTekoca[0]?.round_id ?? null)
       setNalaganje(false)
     }
@@ -58,13 +68,15 @@ export default function Glasovanje() {
   useEffect(() => {
     if (!krogId) return
     const vKrogu = tekme.filter((t) => t.round_id === krogId)
-    const cakajoca = vKrogu.find((t) => t.brez_asistence > 0) ?? vKrogu[0]
+    const cakajoca =
+      vKrogu.find((t) => Number(t.brez_asistence ?? 0) > 0) ?? vKrogu[0]
     setTekmaId(cakajoca?.match_id ?? null)
   }, [krogId, tekme])
 
   // goli izbrane tekme + kandidati + glasovi
   useEffect(() => {
     if (!tekmaId) return
+    const idTekme = tekmaId
     let preklican = false
 
     async function nalozi() {
@@ -74,7 +86,7 @@ export default function Glasovanje() {
           .select(
             'id, minute, is_own_goal, is_penalty, score_home, score_away, team_id, scorer:scorer_id(id, full_name), assist_player_id, assist:assist_player_id(full_name)',
           )
-          .eq('match_id', tekmaId)
+          .eq('match_id', idTekme)
           .order('minute'),
         supabase
           .from('appearances')
@@ -84,26 +96,27 @@ export default function Glasovanje() {
           .select(
             'player_id, team_id, minutes_played, shirt_number, players(id, full_name, position)',
           )
-          .eq('match_id', tekmaId),
+          .eq('match_id', idTekme),
       ])
       if (preklican) return
-      setGoli(g ?? [])
-      setIgralci(nastopi ?? [])
+      setGoli(((g ?? []) as unknown) as Gol[])
+      setIgralci(((nastopi ?? []) as unknown) as Kandidat[])
 
-      const ids = (g ?? []).map((x) => x.id)
+      const ids = ((g ?? []) as any[]).map((x) => x.id as number)
       if (ids.length) {
         const { data: st } = await supabase
           .from('assist_vote_counts')
           .select('goal_id, player_id, votes')
           .in('goal_id', ids)
         if (preklican) return
-        const skupine = {}
-        for (const v of st ?? []) {
-          skupine[v.goal_id] = skupine[v.goal_id] ?? []
-          skupine[v.goal_id].push(v)
+        const skupine: Record<string, Glas[]> = {}
+        for (const v of (st ?? []) as any[]) {
+          const kljuc = String(v.goal_id)
+          skupine[kljuc] = skupine[kljuc] ?? []
+          skupine[kljuc].push({ player_id: v.player_id, votes: v.votes })
         }
         for (const k of Object.keys(skupine))
-          skupine[k].sort((a, b) => b.votes - a.votes)
+          skupine[k].sort((a, b) => Number(b.votes ?? 0) - Number(a.votes ?? 0))
         setGlasovi(skupine)
 
         if (session) {
@@ -114,7 +127,9 @@ export default function Glasovanje() {
             .eq('voter_id', session.user.id)
           if (preklican) return
           setMojiGlasovi(
-            Object.fromEntries((moji ?? []).map((m) => [m.goal_id, m.player_id])),
+            Object.fromEntries(
+              (moji ?? []).map((m: any) => [String(m.goal_id), m.player_id]),
+            ),
           )
         }
       } else {
@@ -129,7 +144,12 @@ export default function Glasovanje() {
   }, [tekmaId, session])
 
   const sezone = useMemo(
-    () => [...new Set(tekme.map((t) => t.season))].sort().reverse(),
+    () =>
+      [
+        ...new Set(tekme.map((t) => t.season).filter((x): x is string => !!x)),
+      ]
+        .sort()
+        .reverse(),
     [tekme],
   )
 
@@ -161,7 +181,7 @@ export default function Glasovanje() {
     [tekme, tekmaId],
   )
 
-  async function glasuj(golId, playerId) {
+  async function glasuj(golId: number, playerId: number | null) {
     if (!session) return
     setNapaka(null)
 
@@ -189,7 +209,7 @@ export default function Glasovanje() {
     ])
     setGlasovi((prej) => ({
       ...prej,
-      [golId]: (st ?? []).sort((a, b) => b.votes - a.votes),
+      [golId]: (st ?? []).sort((a, b) => Number(b.votes ?? 0) - Number(a.votes ?? 0)),
     }))
     if (gg)
       setGoli((prej) =>
@@ -213,7 +233,7 @@ export default function Glasovanje() {
           Kdo je podal?
           {tekmovanje && (
             <span className="ml-2 align-middle text-base font-bold text-slate-500">
-              {tekmovanje.short_name.toLowerCase()}
+              {tekmovanje.short_name?.toLowerCase()}
             </span>
           )}
         </h1>
@@ -245,7 +265,7 @@ export default function Glasovanje() {
               onClick={() => {
                 setSezona(sz)
                 const prva = tekme.find(
-                  (t) => t.season === sz && t.brez_asistence > 0,
+                  (t) => t.season === sz && Number(t.brez_asistence ?? 0) > 0,
                 )
                 const katerakoli = tekme.find((t) => t.season === sz)
                 setKrogId((prva ?? katerakoli)?.round_id ?? null)
@@ -329,7 +349,7 @@ export default function Glasovanje() {
                 <span className="rounded-lg bg-slate-950/60 px-2 py-0.5 text-sm font-black tabular-nums">
                   {t.home_goals}:{t.away_goals}
                 </span>
-                {t.brez_asistence > 0 ? (
+                {Number(t.brez_asistence ?? 0) > 0 ? (
                   <span className="znacka bg-amber-400/20 text-amber-300">
                     {t.brez_asistence}
                   </span>
@@ -395,7 +415,7 @@ export default function Glasovanje() {
                   (i) =>
                     i.team_id === g.team_id &&
                     i.player_id !== g.scorer?.id &&
-                    i.minutes_played > 0,
+                    Number(i.minutes_played ?? 0) > 0,
                 )}
                 nastopi={igralci}
                 glasovi={glasovi[g.id] ?? []}

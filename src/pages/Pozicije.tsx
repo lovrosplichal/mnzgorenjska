@@ -5,16 +5,50 @@ import { prikazniIme, IME_POZICIJE, KRATKA_POZICIJA } from '../lib/pomozno'
 import { useTekmovanje } from '../lib/tekmovanje'
 import Grb from '../components/Grb'
 import { Link } from 'react-router-dom'
+import type { Pozicija } from '../lib/tipi'
+
+/** Klub v izbirniku. */
+interface Klub {
+  id: number
+  name: string | null
+}
+
+/** Igralec, kot ga prikaze ta stran (`player_overview`). */
+interface IgralecPoz {
+  id: number
+  full_name: string | null
+  position: Pozicija | null
+  position_source: string | null
+  shirt_number: number | null
+  minutes: number | null
+  goals: number | null
+  matches: number | null
+  clean_sheets: number | null
+  team_name?: string | null
+  team_short?: string | null
+  team_logo?: string | null
+}
+
+/** Glasovi za enega igralca po pozicijah. */
+type GlasoviIgralca = Partial<Record<Pozicija, { votes: number; weight: number }>>
+
+/** Statisticni prior za enega igralca po pozicijah. */
+type PrioriIgralca = Partial<Record<Pozicija, number>>
 
 const PRAG = 5
 const MIN_PRAG = 2
-const POZICIJE = ['GK', 'DEF', 'MID', 'FWD']
+const POZICIJE: Pozicija[] = ['GK', 'DEF', 'MID', 'FWD']
 
-const IKONA = { GK: '🧤', DEF: '🛡️', MID: '⚙️', FWD: '🎯' }
+const IKONA: Record<Pozicija, string> = {
+  GK: '🧤',
+  DEF: '🛡️',
+  MID: '⚙️',
+  FWD: '🎯',
+}
 
 // Ista logika kot v migraciji `adaptivni_prag` — če je prior močan za neko
 // pozicijo, prag za to pozicijo pade.
-function adaptivniPrag(priorZaTo) {
+function adaptivniPrag(priorZaTo: number) {
   if (priorZaTo >= 0.70) return Math.max(MIN_PRAG, PRAG - 3)
   if (priorZaTo >= 0.50) return Math.max(MIN_PRAG, PRAG - 2)
   if (priorZaTo >= 0.30) return Math.max(MIN_PRAG, PRAG - 1)
@@ -24,17 +58,23 @@ function adaptivniPrag(priorZaTo) {
 export default function Pozicije() {
   const { session, loading } = useAuth()
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
-  const [klubi, setKlubi] = useState([])
-  const [klubId, setKlubId] = useState(null)
-  const [igralci, setIgralci] = useState([])
-  const [glasovi, setGlasovi] = useState({}) // player_id -> {GK: {votes,weight}, ...}
-  const [priori, setPriori] = useState({}) // player_id -> {GK: score, ...}
-  const [mojiGlasovi, setMojiGlasovi] = useState({}) // player_id -> position
-  const [insiderTeamId, setInsiderTeamId] = useState(null)
-  const [mojaUtez, setMojaUtez] = useState(null)
-  const [mojaTocnost, setMojaTocnost] = useState(null) // {correct, resolved}
+  const [klubi, setKlubi] = useState<Klub[]>([])
+  const [klubId, setKlubId] = useState<number | null>(null)
+  const [igralci, setIgralci] = useState<IgralecPoz[]>([])
+  // player_id -> glasovi po pozicijah
+  const [glasovi, setGlasovi] = useState<Record<string, GlasoviIgralca>>({})
+  // player_id -> prior po pozicijah
+  const [priori, setPriori] = useState<Record<string, PrioriIgralca>>({})
+  // player_id -> pozicija, za katero sem glasoval
+  const [mojiGlasovi, setMojiGlasovi] = useState<Record<string, Pozicija>>({})
+  const [insiderTeamId, setInsiderTeamId] = useState<number | null>(null)
+  const [mojaUtez, setMojaUtez] = useState<number | null>(null)
+  const [mojaTocnost, setMojaTocnost] = useState<{
+    correct: number
+    resolved: number
+  } | null>(null)
   const [nalaganje, setNalaganje] = useState(true)
-  const [napaka, setNapaka] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
   // Privzeto pokažemo tiste, ki jih je vredno popraviti: brez pozicije in
   // ugibanja iz statistike. Potrjene iz zapisnika glasovanje itak ne premakne.
   const [samoNepotrjene, setSamoNepotrjene] = useState(true)
@@ -47,7 +87,10 @@ export default function Pozicije() {
       .eq('competition_id', tekmovanjeId)
       .order('name')
       .then(({ data }) => {
-        const seznam = (data ?? []).map((k) => ({ id: k.team_id, name: k.name }))
+        const seznam: Klub[] = ((data ?? []) as any[]).map((k) => ({
+          id: k.team_id,
+          name: k.name,
+        }))
         setKlubi(seznam)
         setKlubId(seznam[0]?.id ?? null)
         setNalaganje(false)
@@ -92,6 +135,8 @@ export default function Pozicije() {
 
   useEffect(() => {
     if (!klubId) return
+    const ligaId = tekmovanjeId
+    const idKluba = klubId
     let preklican = false
 
     async function nalozi() {
@@ -100,13 +145,13 @@ export default function Pozicije() {
         .select(
           'id, full_name, position, position_source, shirt_number, minutes, goals, matches, clean_sheets, team_name, team_short, team_logo',
         )
-        .eq('competition_id', tekmovanjeId)
-        .eq('team_id', klubId)
+        .eq('competition_id', ligaId as number)
+        .eq('team_id', idKluba as number)
         .order('minutes', { ascending: false })
       if (preklican) return
-      setIgralci(p ?? [])
+      setIgralci((p ?? []) as IgralecPoz[])
 
-      const ids = (p ?? []).map((x) => x.id)
+      const ids = ((p ?? []) as IgralecPoz[]).map((x) => x.id)
       if (!ids.length) return
 
       // Uteži glasovanja (upoštevajo zaupanje + insider), priori za pozicije.
@@ -121,20 +166,22 @@ export default function Pozicije() {
           .in('player_id', ids),
       ])
       if (preklican) return
-      const skupine = {}
-      for (const v of st ?? []) {
-        skupine[v.player_id] = skupine[v.player_id] ?? {}
-        skupine[v.player_id][v.position] = {
+      const skupine: Record<string, GlasoviIgralca> = {}
+      for (const v of (st ?? []) as any[]) {
+        const kljuc = String(v.player_id)
+        skupine[kljuc] = skupine[kljuc] ?? {}
+        skupine[kljuc][v.position as Pozicija] = {
           votes: v.votes,
           weight: Number(v.weight),
         }
       }
       setGlasovi(skupine)
 
-      const priorMap = {}
-      for (const v of pr ?? []) {
-        priorMap[v.player_id] = priorMap[v.player_id] ?? {}
-        priorMap[v.player_id][v.position] = Number(v.score)
+      const priorMap: Record<string, PrioriIgralca> = {}
+      for (const v of (pr ?? []) as any[]) {
+        const kljuc = String(v.player_id)
+        priorMap[kljuc] = priorMap[kljuc] ?? {}
+        priorMap[kljuc][v.position as Pozicija] = Number(v.score)
       }
       setPriori(priorMap)
 
@@ -146,7 +193,9 @@ export default function Pozicije() {
           .eq('voter_id', session.user.id)
         if (preklican) return
         setMojiGlasovi(
-          Object.fromEntries((moji ?? []).map((m) => [m.player_id, m.position])),
+          Object.fromEntries(
+            (moji ?? []).map((m: any) => [String(m.player_id), m.position]),
+          ),
         )
       }
     }
@@ -157,7 +206,7 @@ export default function Pozicije() {
     // insiderTeamId je v DEP, ker sprememba insider statusa vpliva na uteži.
   }, [klubId, session, insiderTeamId, tekmovanjeId])
 
-  async function nastaviInsider(id) {
+  async function nastaviInsider(id: number | null) {
     if (!session) return
     setNapaka(null)
     const { error } = await supabase
@@ -168,7 +217,7 @@ export default function Pozicije() {
     setInsiderTeamId(id)
   }
 
-  async function glasuj(playerId, pozicija) {
+  async function glasuj(playerId: number, pozicija: Pozicija) {
     if (!session) return
     setNapaka(null)
 
@@ -178,7 +227,7 @@ export default function Pozicije() {
     )
     if (error) return setNapaka(error.message)
 
-    setMojiGlasovi({ ...mojiGlasovi, [playerId]: pozicija })
+    setMojiGlasovi({ ...mojiGlasovi, [String(playerId)]: pozicija })
 
     const [{ data: st }, { data: p }] = await Promise.all([
       supabase
@@ -193,8 +242,8 @@ export default function Pozicije() {
     ])
     setGlasovi((prej) => ({
       ...prej,
-      [playerId]: Object.fromEntries(
-        (st ?? []).map((v) => [
+      [String(playerId)]: Object.fromEntries(
+        ((st ?? []) as any[]).map((v) => [
           v.position,
           { votes: v.votes, weight: Number(v.weight) },
         ]),
@@ -204,7 +253,11 @@ export default function Pozicije() {
       setIgralci((prej) =>
         prej.map((x) =>
           x.id === playerId
-            ? { ...x, position: p.position, position_source: p.position_source }
+            ? {
+                ...x,
+                position: (p.position as Pozicija | null) ?? null,
+                position_source: p.position_source,
+              }
             : x,
         ),
       )
@@ -236,7 +289,7 @@ export default function Pozicije() {
           Kje kdo igra?
           {tekmovanje && (
             <span className="ml-2 align-middle text-base font-bold text-slate-500">
-              {tekmovanje.short_name.toLowerCase()}
+              {tekmovanje.short_name?.toLowerCase()}
             </span>
           )}
         </h1>
@@ -332,7 +385,19 @@ export default function Pozicije() {
   )
 }
 
-function MojStatus({ klubi, insiderTeamId, onNastaviInsider, utez, tocnost }) {
+function MojStatus({
+  klubi,
+  insiderTeamId,
+  onNastaviInsider,
+  utez,
+  tocnost,
+}: {
+  klubi: Klub[]
+  insiderTeamId: number | null
+  onNastaviInsider: (id: number | null) => void
+  utez: number | null
+  tocnost: { correct: number; resolved: number } | null
+}) {
   return (
     <div className="kartica space-y-3 border-gnl-400/20 bg-gnl-500/5 p-3 sm:p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -388,6 +453,14 @@ function IgralecKartica({
   omogoceno,
   insiderVelja,
   onGlasuj,
+}: {
+  igralec: IgralecPoz
+  glasovi: GlasoviIgralca
+  prior: PrioriIgralca | null
+  mojGlas?: Pozicija
+  omogoceno: boolean
+  insiderVelja: boolean
+  onGlasuj: (playerId: number, pozicija: Pozicija) => void
 }) {
   // Zapisnika in ročnega vnosa administratorja glasovanje ne premakne; vse
   // ostalo (neznano, ugibanje, prejšnje glasovanje) je mogoče popraviti.
@@ -396,12 +469,16 @@ function IgralecKartica({
   const ugibano = igralec.position_source === 'ugibanje'
   const potrjeno = Boolean(igralec.position)
   // Vodilna pozicija po SEŠTETIH UTEŽEH (ne surovih glasovih).
-  const vodilna = Object.entries(glasovi)
-    .map(([p, v]) => [p, v.weight ?? v.votes ?? 0])
+  const vodilna = (
+    Object.entries(glasovi) as Array<[Pozicija, { votes: number; weight: number }]>
+  )
+    .map(([p, v]) => [p, v.weight ?? v.votes ?? 0] as [Pozicija, number])
     .sort((a, b) => b[1] - a[1])[0]
 
   const priorVodilna = prior
-    ? Object.entries(prior).sort((a, b) => b[1] - a[1])[0]
+    ? (Object.entries(prior) as Array<[Pozicija, number]>).sort(
+        (a, b) => b[1] - a[1],
+      )[0]
     : null
 
   // Glas pozicije ne premakne takoj — zbrani se uveljavijo enkrat na teden, v
@@ -452,7 +529,8 @@ function IgralecKartica({
                   : 'Potrdila skupnost'
             }
           >
-            {IKONA[igralec.position]} {IME_POZICIJE[igralec.position]}
+            {igralec.position ? IKONA[igralec.position] : '❔'}{' '}
+            {igralec.position ? IME_POZICIJE[igralec.position] : ''}
             {izZapisnika && ' · zapisnik'}
           </span>
         )}
@@ -489,9 +567,9 @@ function IgralecKartica({
       {!zaklenjeno && (
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {POZICIJE.map((p) => {
-            const g = glasovi[p] ?? {}
-            const votes = g.votes ?? 0
-            const weight = g.weight ?? 0
+            const g = glasovi[p]
+            const votes = g?.votes ?? 0
+            const weight = g?.weight ?? 0
             const priorZa = prior?.[p] ?? 0
             const pragZa = adaptivniPrag(priorZa)
             const izbran = mojGlas === p
