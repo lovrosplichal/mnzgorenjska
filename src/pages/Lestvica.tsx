@@ -5,30 +5,72 @@ import { useTekmovanje } from '../lib/tekmovanje'
 
 const MEDALJE = ['🥇', '🥈', '🥉']
 
+/** Krog sezone, kot ga rabi ta stran. */
+interface Krog {
+  id: number
+  number: number
+  season: string
+}
+
+/** Vrstica `fantasy_round_standings` — tocke ekipe v enem krogu. */
+interface TockeKroga {
+  round_id: number
+  fantasy_team_id: number
+  team_name: string | null
+  owner_name: string | null
+  points: number | null
+  penalty: number | null
+  transfers: number | null
+  rank?: number | null
+}
+
+/**
+ * Vrstica lestvice. Skupna lestvica prinese `total_points`, sestevek "od
+ * kroga N naprej" pa `points` — zato sta oba neobvezna in prikaz izbere
+ * pravega.
+ */
+interface VrsticaLestvice {
+  fantasy_team_id: number
+  team_name: string | null
+  owner_name: string | null
+  total_points?: number | null
+  points?: number | null
+  penalty?: number | null
+  transfers?: number | null
+  team_created_at?: string | null
+  owner_registered_at?: string | null
+  krogov?: number
+}
+
+/** Zmagovalec enega kroga — vrstica s stevilko kroga zraven. */
+type ZmagovalecKroga = TockeKroga & { round_number: number; season: string }
+
 export default function Lestvica() {
   const { id: tekmovanjeId, tekmovanje } = useTekmovanje()
-  const [ekipe, setEkipe] = useState([])
-  const [krog, setKrog] = useState(null)
-  const [krogLestvica, setKrogLestvica] = useState([])
-  const [vsiKrogiOdigrani, setVsiKrogiOdigrani] = useState([]) // [{id, number, season}]
-  const [odigraneTocke, setOdigraneTocke] = useState([]) // fantasy_round_standings rows
-  const [odKroga, setOdKroga] = useState(1) // filter "od kroga N naprej"
+  const [ekipe, setEkipe] = useState<VrsticaLestvice[]>([])
+  const [krog, setKrog] = useState<Krog | null>(null)
+  const [krogLestvica, setKrogLestvica] = useState<TockeKroga[]>([])
+  const [vsiKrogiOdigrani, setVsiKrogiOdigrani] = useState<Krog[]>([])
+  const [odigraneTocke, setOdigraneTocke] = useState<TockeKroga[]>([])
+  // filter "od kroga N naprej"
+  const [odKroga, setOdKroga] = useState(1)
   const [nalaganje, setNalaganje] = useState(true)
-  const [napaka, setNapaka] = useState(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
 
   useEffect(() => {
     if (!tekmovanjeId) return
     setNalaganje(true)
+    const ligaId = tekmovanjeId
     supabase
       .from('fantasy_team_standings')
       .select(
         'fantasy_team_id, team_name, owner_name, owner_registered_at, team_created_at, total_points',
       )
-      .eq('competition_id', tekmovanjeId)
+      .eq('competition_id', ligaId)
       .order('total_points', { ascending: false })
       .then(({ data, error }) => {
         if (error) setNapaka(error.message)
-        else setEkipe(data ?? [])
+        else setEkipe((data ?? []) as VrsticaLestvice[])
         setNalaganje(false)
       })
 
@@ -38,10 +80,15 @@ export default function Lestvica() {
       const { data: zadnji } = await supabase
         .from('zadnji_odigrani_krog')
         .select('id, season, number')
-        .eq('competition_id', tekmovanjeId)
+        .eq('competition_id', ligaId)
         .maybeSingle()
-      setKrog(zadnji ?? null)
-      if (!zadnji) {
+      // Pogled vrne nullable stolpce; brez id-ja ali sezone kroga ni.
+      const krogOk: Krog | null =
+        zadnji && zadnji.id != null && zadnji.season != null
+          ? { id: zadnji.id, number: zadnji.number ?? 0, season: zadnji.season }
+          : null
+      setKrog(krogOk)
+      if (!krogOk) {
         setVsiKrogiOdigrani([])
         setOdigraneTocke([])
         setKrogLestvica([])
@@ -52,27 +99,30 @@ export default function Lestvica() {
       const { data: krogi } = await supabase
         .from('rounds')
         .select('id, number, season')
-        .eq('competition_id', tekmovanjeId)
-        .eq('season', zadnji.season)
+        .eq('competition_id', ligaId)
+        .eq('season', krogOk.season)
         .order('number', { ascending: true })
-      const idsOdigranih = new Set()
+      const idsOdigranih = new Set<number>()
       // Odigran = ima fantasy_round_standings vrstice
       const { data: vseTocke } = await supabase
         .from('fantasy_round_standings')
         .select('round_id, fantasy_team_id, team_name, owner_name, points, penalty, transfers')
-        .eq('competition_id', tekmovanjeId)
-      for (const t of vseTocke ?? []) idsOdigranih.add(t.round_id)
-      const odigraniKrogi = (krogi ?? []).filter((k) => idsOdigranih.has(k.id))
+        .eq('competition_id', ligaId)
+      for (const t of vseTocke ?? [])
+        if (t.round_id != null) idsOdigranih.add(t.round_id)
+      const odigraniKrogi = ((krogi ?? []) as Krog[]).filter((k) =>
+        idsOdigranih.has(k.id),
+      )
       setVsiKrogiOdigrani(odigraniKrogi)
-      setOdigraneTocke(vseTocke ?? [])
+      setOdigraneTocke((vseTocke ?? []) as TockeKroga[])
 
       const { data } = await supabase
         .from('fantasy_round_standings')
         .select('fantasy_team_id, team_name, owner_name, points, transfers, penalty, rank')
-        .eq('round_id', zadnji.id)
+        .eq('round_id', krogOk.id)
         .order('points', { ascending: false })
         .limit(10)
-      setKrogLestvica(data ?? [])
+      setKrogLestvica((data ?? []) as TockeKroga[])
     }
     nalozi()
   }, [tekmovanjeId])
@@ -82,7 +132,7 @@ export default function Lestvica() {
   // krog. (transfer penalty je že odšteta v .points, glede na definicijo
   // pogleda? Če ne, preverimo tudi tam.)
   const zmagovalciKrogov = useMemo(() => {
-    const najPoKrogu = new Map()
+    const najPoKrogu = new Map<number, TockeKroga>()
     for (const t of odigraneTocke) {
       const prej = najPoKrogu.get(t.round_id)
       if (!prej || Number(t.points ?? 0) > Number(prej.points ?? 0)) {
@@ -95,7 +145,7 @@ export default function Lestvica() {
         const k = vsiKrogiOdigrani.find((x) => x.id === roundId)
         return k ? { ...t, round_number: k.number, season: k.season } : null
       })
-      .filter(Boolean)
+      .filter((z): z is ZmagovalecKroga => z !== null)
       .sort((a, b) => a.round_number - b.round_number)
   }, [odigraneTocke, vsiKrogiOdigrani])
 
@@ -103,10 +153,10 @@ export default function Lestvica() {
   // te sezone, katerih number >= odKroga, in razvrsti ekipe.
   const lestvicaOd = useMemo(() => {
     if (odKroga <= 1) return null // enako kot Skupno
-    const idsOd = new Set(
+    const idsOd = new Set<number>(
       vsiKrogiOdigrani.filter((k) => k.number >= odKroga).map((k) => k.id),
     )
-    const skupine = new Map()
+    const skupine = new Map<number, VrsticaLestvice & { points: number; krogov: number }>()
     for (const t of odigraneTocke) {
       if (!idsOd.has(t.round_id)) continue
       const prej = skupine.get(t.fantasy_team_id) ?? {
@@ -131,7 +181,10 @@ export default function Lestvica() {
     return (
       <div className="space-y-4">
         <h1 className="text-3xl font-black naslov">
-          Lestvica{tekmovanje ? ` — ${tekmovanje.short_name.toLowerCase()}` : ''}
+          Lestvica
+          {tekmovanje?.short_name
+            ? ` — ${tekmovanje.short_name.toLowerCase()}`
+            : ''}
         </h1>
         <p className="kartica p-6 text-center text-slate-400">
           Lestvica je še prazna — sestavi prvo ekipo!
@@ -146,7 +199,10 @@ export default function Lestvica() {
   return (
     <div className="space-y-5">
       <h1 className="text-2xl font-black naslov sm:text-3xl">
-        Lestvica{tekmovanje ? ` — ${tekmovanje.short_name.toLowerCase()}` : ''}
+        Lestvica
+          {tekmovanje?.short_name
+            ? ` — ${tekmovanje.short_name.toLowerCase()}`
+            : ''}
       </h1>
 
       {zmagovalecKroga && (
@@ -180,7 +236,7 @@ export default function Lestvica() {
                     {e.rank}
                   </span>
                   <span className="min-w-0 flex-1 truncate">{e.team_name}</span>
-                  {e.penalty > 0 && (
+                  {Number(e.penalty ?? 0) > 0 && (
                     <span
                       className="text-xs text-rose-400"
                       title={`${e.transfers} prestopov — kazen ${e.penalty} točk`}
@@ -320,7 +376,7 @@ export default function Lestvica() {
                       <span className="ml-2 text-slate-600">
                         · igra od{' '}
                         {new Date(
-                          e.team_created_at ?? e.owner_registered_at,
+                          (e.team_created_at ?? e.owner_registered_at) as string,
                         ).toLocaleDateString('sl-SI', {
                           day: 'numeric',
                           month: 'numeric',

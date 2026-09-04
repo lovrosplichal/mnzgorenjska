@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/useAuth'
@@ -12,25 +12,51 @@ import {
 } from '../lib/pomozno'
 import Grb from '../components/Grb'
 import { tockeZaNastop } from '../lib/tockovanje'
+import type { Pozicija, Postavka } from '../lib/tipi'
 
-const POZICIJE = ['GK', 'DEF', 'MID', 'FWD']
-const IKONA = { GK: '🧤', DEF: '🛡️', MID: '⚙️', FWD: '🎯' }
+/** Vrstica pogleda `player_overview` — profil igralca. */
+type Profil = Record<string, any> & {
+  id: number
+  competition_id?: number | null
+  team_id?: number | null
+  position?: Pozicija | null
+  full_name?: string | null
+}
+
+/** Razlaga tock v enem krogu. */
+interface Razlaga {
+  round_id: number
+  number: number | null
+  season: string | null
+  played_on: string | null
+  match_id: number
+  minute: number | null
+  postavke: Postavka[]
+  skupaj: number
+}
+
+const POZICIJE: Pozicija[] = ['GK', 'DEF', 'MID', 'FWD']
+const IKONA: Record<Pozicija, string> = {
+  GK: '🧤',
+  DEF: '🛡️',
+  MID: '⚙️',
+  FWD: '🎯',
+}
 
 export default function Igralec() {
   const { id } = useParams()
+  // Iz naslova pride niz; stolpci so stevilcni.
+  const igralecId = Number(id)
   const { session } = useAuth()
-  const [igralec, setIgralec] = useState(null)
-  const [krogi, setKrogi] = useState([])
-  // Per-krog razlaga točk: [{round_id, number, season, postavke: [{opis,tocke}], skupaj, minute}]
-  const [razlage, setRazlage] = useState([])
-  const [odprtRazlaga, setOdprtRazlaga] = useState(null)
-  const [cene, setCene] = useState([])
-  const [tekme, setTekme] = useState([])
-  const [glasovi, setGlasovi] = useState({})
-  const [mojGlas, setMojGlas] = useState(null)
-  const [prijava, setPrijava] = useState(false)
-  const [sporocilo, setSporocilo] = useState(null)
-  const [napaka, setNapaka] = useState(null)
+  const [igralec, setIgralec] = useState<Profil | null>(null)
+  const [razlage, setRazlage] = useState<Razlaga[]>([])
+  const [odprtRazlaga, setOdprtRazlaga] = useState<number | null>(null)
+  const [cene, setCene] = useState<any[]>([])
+  const [tekme, setTekme] = useState<any[]>([])
+  const [glasovi, setGlasovi] = useState<Record<string, number>>({})
+  const [mojGlas, setMojGlas] = useState<Pozicija | null>(null)
+  const [sporocilo, setSporocilo] = useState<string | null>(null)
+  const [napaka, setNapaka] = useState<string | null>(null)
   const [nalaganje, setNalaganje] = useState(true)
 
   useEffect(() => {
@@ -39,7 +65,7 @@ export default function Igralec() {
       const { data: p, error } = await supabase
         .from('player_overview')
         .select('*')
-        .eq('id', id)
+        .eq('id', igralecId)
         .maybeSingle()
       if (preklican) return
       if (error) {
@@ -47,7 +73,7 @@ export default function Igralec() {
         setNalaganje(false)
         return
       }
-      setIgralec(p)
+      setIgralec((p as Profil | null) ?? null)
 
       // Trenutna sezona — potrebujemo, da price_changes filtriramo nanjo.
       // Ligo poberemo kar iz igralca: stran je dosegljiva tudi neposredno s
@@ -60,42 +86,39 @@ export default function Igralec() {
         .maybeSingle()
       const tekocaSez = sez?.season ?? ''
 
-      const [{ data: k }, { data: c }, { data: g }, { data: t }] = await Promise.all([
-        supabase
-          .from('player_scores')
-          .select('points, rounds(number, season, played_on)')
-          .eq('player_id', id)
-          .order('round_id', { ascending: false })
-          .limit(10),
+      const [{ data: c }, { data: g }, { data: t }] = await Promise.all([
         // Samo spremembe cen v TEKOČI sezoni — sicer se pokažejo lanski
         // krogi brez konteksta in delujejo kot "napovedi" za prihodnost.
         supabase
           .from('price_changes')
           .select('old_value, new_value, changed_at, rounds!inner(number, season)')
-          .eq('player_id', id)
+          .eq('player_id', igralecId)
           .eq('rounds.season', tekocaSez)
           .order('changed_at', { ascending: false })
           .limit(5),
         supabase
           .from('position_vote_counts')
           .select('position, votes')
-          .eq('player_id', id),
+          .eq('player_id', igralecId),
         // Naslednje tekme kluba — pomaga pri odločitvi, koga vzeti.
         p?.team_id
           ? supabase
               .from('prihodnje_tekme')
               .select('round_number, played_on, opponent_short, opponent_name, opponent_logo, doma')
-              .eq('competition_id', p.competition_id)
+              .eq('competition_id', p.competition_id ?? 0)
               .eq('team_id', p.team_id)
               .order('played_on')
               .limit(5)
           : Promise.resolve({ data: [] }),
       ])
       if (preklican) return
-      setKrogi(k ?? [])
-      setCene(c ?? [])
-      setTekme(t ?? [])
-      setGlasovi(Object.fromEntries((g ?? []).map((v) => [v.position, v.votes])))
+      setCene((c ?? []) as any[])
+      setTekme((t ?? []) as any[])
+      setGlasovi(
+        Object.fromEntries(
+          ((g ?? []) as any[]).map((v) => [String(v.position), Number(v.votes)]),
+        ),
+      )
 
       // Razlaga točk per krog — nastopi + goli + asistence
       const { data: nastopi } = await supabase
@@ -103,19 +126,21 @@ export default function Igralec() {
         .select(
           'match_id, minutes_played, goals, own_goals, penalties_missed, penalties_saved, yellow_cards, red_cards, goals_conceded, clean_sheet, matches(round_id, rounds(number, season, played_on))',
         )
-        .eq('player_id', id)
+        .eq('player_id', igralecId)
       // Asistence: število golov, kjer je ta igralec confirmed asistent
       const { data: asistGoli } = await supabase
         .from('goals')
         .select('match_id')
-        .eq('assist_player_id', id)
-      const asistPoMatchu = new Map()
-      for (const gg of asistGoli ?? [])
+        .eq('assist_player_id', igralecId)
+      const asistPoMatchu = new Map<number, number>()
+      for (const gg of (asistGoli ?? []) as any[])
         asistPoMatchu.set(gg.match_id, (asistPoMatchu.get(gg.match_id) ?? 0) + 1)
 
-      const pozicija = p?.position
-      const raz = []
-      for (const n of nastopi ?? []) {
+      // Brez potrjene pozicije tock ni mogoce razcleniti; privzamemo vezista,
+      // kakor je racunala tudi prejsnja razlicica.
+      const pozicija = ((p as Profil | null)?.position ?? 'MID') as Pozicija
+      const raz: Razlaga[] = []
+      for (const n of (nastopi ?? []) as any[]) {
         const r = n.matches?.rounds
         if (!r) continue
         const nastop = {
@@ -149,10 +174,10 @@ export default function Igralec() {
         const { data: moj } = await supabase
           .from('position_votes')
           .select('position')
-          .eq('player_id', id)
+          .eq('player_id', igralecId)
           .eq('voter_id', session.user.id)
           .maybeSingle()
-        if (!preklican) setMojGlas(moj?.position ?? null)
+        if (!preklican) setMojGlas((moj?.position as Pozicija | null) ?? null)
       }
       setNalaganje(false)
     }
@@ -160,15 +185,19 @@ export default function Igralec() {
     return () => {
       preklican = true
     }
-  }, [id, session])
+  }, [igralecId, session])
 
-  async function glasuj(pozicija) {
+  async function glasuj(pozicija: Pozicija) {
     if (!session) return
     setNapaka(null)
     const { error } = await supabase
       .from('position_votes')
       .upsert(
-        { player_id: Number(id), voter_id: session.user.id, position: pozicija },
+        {
+          player_id: igralecId,
+          voter_id: session.user.id,
+          position: pozicija,
+        },
         { onConflict: 'player_id,voter_id' },
       )
     if (error) return setNapaka(error.message)
@@ -179,9 +208,9 @@ export default function Igralec() {
     const { data: p } = await supabase
       .from('player_overview')
       .select('*')
-      .eq('id', id)
+      .eq('id', igralecId)
       .maybeSingle()
-    if (p) setIgralec(p)
+    if (p) setIgralec(p as Profil)
   }
 
   if (nalaganje)
@@ -246,8 +275,9 @@ export default function Igralec() {
       <section className="kartica space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <span className={`znacka ${razredPozicije(igralec.position)}`}>
-            {IKONA[igralec.position]}{' '}
-            {IME_POZICIJE[igralec.position] ?? 'Pozicija ni znana'}
+            {igralec.position ? IKONA[igralec.position] : '❔'}{' '}
+            {(igralec.position && IME_POZICIJE[igralec.position]) ??
+              'Pozicija ni znana'}
           </span>
           {igralec.position_source === 'zapisnik' && (
             <span className="text-xs text-slate-500">
@@ -465,7 +495,13 @@ export default function Igralec() {
   )
 }
 
-function Stevilka({ oznaka, vrednost }) {
+function Stevilka({
+  oznaka,
+  vrednost,
+}: {
+  oznaka: string
+  vrednost: ReactNode
+}) {
   return (
     <div className="kartica p-3 text-center">
       <div className="text-xl font-black tabular-nums">{vrednost}</div>
