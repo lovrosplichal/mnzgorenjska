@@ -17,7 +17,7 @@
 // Privzeto dvojnike najde sam; z `--odvecni <id> --obdrzi <id>` mu par določiš.
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync } from 'node:fs'
-import { MAX_IZ_KLUBA } from '../src/lib/pravila.js'
+import { MAX_IZ_KLUBA } from '../src/lib/pravila.ts'
 
 function izEnv() {
   try {

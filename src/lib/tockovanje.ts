@@ -3,6 +3,8 @@
 // Točke se računajo iz uradnih zapisnikov MNZ Gorenjska, razen asistenc in
 // pozicij, ki jih določi skupnost z glasovanjem.
 
+import type { IzracunTock, Nastop, Postavka, Pozicija } from './tipi'
+
 export const TOCKE = {
   // igralni čas
   nastopDo60: 1,
@@ -10,16 +12,16 @@ export const TOCKE = {
   pragMinut: 60, // brez sodniškega podaljška
 
   // goli po pozicijah
-  gol: { GK: 10, DEF: 6, MID: 5, FWD: 4 },
+  gol: { GK: 10, DEF: 6, MID: 5, FWD: 4 } as Record<Pozicija, number>,
 
   asistenca: 3,
 
   // clean sheet (vsaj 60 minut, brez prejetega gola)
-  cleanSheet: { GK: 4, DEF: 4, MID: 1, FWD: 0 },
+  cleanSheet: { GK: 4, DEF: 4, MID: 1, FWD: 0 } as Record<Pozicija, number>,
 
   // prejeti goli: -1 za vsaka 2 prejeta (vratarji in branilci)
   prejetiNaTocko: 2,
-  prejetiPozicije: ['GK', 'DEF'],
+  prejetiPozicije: ['GK', 'DEF'] as Pozicija[],
 
   obranjenaEnajstmetrovka: 5,
   zgresenaEnajstmetrovka: -2,
@@ -28,16 +30,10 @@ export const TOCKE = {
   rdeciKarton: -3,
 }
 
-/**
- * Izračuna točke enega igralca na eni tekmi.
- *
- * @param {object} n nastop igralca
- * @param {'GK'|'DEF'|'MID'|'FWD'} pozicija
- * @returns {{ skupaj: number, postavke: Array<{ opis: string, tocke: number }> }}
- */
-export function tockeZaNastop(n, pozicija) {
-  const postavke = []
-  const dodaj = (opis, tocke) => {
+/** Izračuna točke enega igralca na eni tekmi. */
+export function tockeZaNastop(n: Nastop, pozicija: Pozicija): IzracunTock {
+  const postavke: Postavka[] = []
+  const dodaj = (opis: string, tocke: number) => {
     if (tocke !== 0) postavke.push({ opis, tocke })
   }
 
@@ -50,14 +46,15 @@ export function tockeZaNastop(n, pozicija) {
 
   // goli
   const zaGol = TOCKE.gol[pozicija] ?? 0
-  if (n.goli > 0)
-    dodaj(n.goli === 1 ? 'Gol' : `Goli (${n.goli})`, n.goli * zaGol)
+  const goli = n.goli ?? 0
+  if (goli > 0) dodaj(goli === 1 ? 'Gol' : `Goli (${goli})`, goli * zaGol)
 
   // asistence (iz glasovanja skupnosti)
-  if (n.asistence > 0)
+  const asistence = n.asistence ?? 0
+  if (asistence > 0)
     dodaj(
-      n.asistence === 1 ? 'Asistenca' : `Asistence (${n.asistence})`,
-      n.asistence * TOCKE.asistenca,
+      asistence === 1 ? 'Asistenca' : `Asistence (${asistence})`,
+      asistence * TOCKE.asistenca,
     )
 
   // clean sheet
@@ -66,28 +63,31 @@ export function tockeZaNastop(n, pozicija) {
     dodaj('Brez prejetega gola', zaCS)
 
   // prejeti goli
-  if (TOCKE.prejetiPozicije.includes(pozicija) && n.prejetiGoli > 0) {
-    const odbitek = -Math.floor(n.prejetiGoli / TOCKE.prejetiNaTocko)
-    if (odbitek !== 0) dodaj(`Prejeti goli (${n.prejetiGoli})`, odbitek)
+  const prejetiGoli = n.prejetiGoli ?? 0
+  if (TOCKE.prejetiPozicije.includes(pozicija) && prejetiGoli > 0) {
+    const odbitek = -Math.floor(prejetiGoli / TOCKE.prejetiNaTocko)
+    if (odbitek !== 0) dodaj(`Prejeti goli (${prejetiGoli})`, odbitek)
   }
 
   // posebne akcije
-  if (n.obranjeneEnajstmetrovke > 0)
+  const obranjene = n.obranjeneEnajstmetrovke ?? 0
+  if (obranjene > 0)
     dodaj(
-      `Obranjena enajstmetrovka (${n.obranjeneEnajstmetrovke})`,
-      n.obranjeneEnajstmetrovke * TOCKE.obranjenaEnajstmetrovka,
+      `Obranjena enajstmetrovka (${obranjene})`,
+      obranjene * TOCKE.obranjenaEnajstmetrovka,
     )
-  if (n.zgreseneEnajstmetrovke > 0)
+  const zgresene = n.zgreseneEnajstmetrovke ?? 0
+  if (zgresene > 0)
     dodaj(
-      `Zgrešena enajstmetrovka (${n.zgreseneEnajstmetrovke})`,
-      n.zgreseneEnajstmetrovke * TOCKE.zgresenaEnajstmetrovka,
+      `Zgrešena enajstmetrovka (${zgresene})`,
+      zgresene * TOCKE.zgresenaEnajstmetrovka,
     )
-  if (n.avtogoli > 0)
-    dodaj(`Avtogol (${n.avtogoli})`, n.avtogoli * TOCKE.avtogol)
-  if (n.rumeni > 0)
-    dodaj(`Rumeni karton (${n.rumeni})`, n.rumeni * TOCKE.rumeniKarton)
-  if (n.rdeci > 0)
-    dodaj('Rdeči karton', n.rdeci * TOCKE.rdeciKarton)
+  const avtogoli = n.avtogoli ?? 0
+  if (avtogoli > 0) dodaj(`Avtogol (${avtogoli})`, avtogoli * TOCKE.avtogol)
+  const rumeni = n.rumeni ?? 0
+  if (rumeni > 0) dodaj(`Rumeni karton (${rumeni})`, rumeni * TOCKE.rumeniKarton)
+  const rdeci = n.rdeci ?? 0
+  if (rdeci > 0) dodaj('Rdeči karton', rdeci * TOCKE.rdeciKarton)
 
   return {
     skupaj: postavke.reduce((v, p) => v + p.tocke, 0),
@@ -96,7 +96,10 @@ export function tockeZaNastop(n, pozicija) {
 }
 
 /** Kratek opis pravil za prikaz uporabnikom. */
-export const PRAVILA_OPIS = [
+export const PRAVILA_OPIS: Array<{
+  skupina: string
+  vrstice: Array<[string, string]>
+}> = [
   { skupina: 'Igralni čas', vrstice: [
     ['Nastop do 60 minut', '+1'],
     ['Odigranih 60 minut ali več', '+2'],

@@ -5,13 +5,23 @@
 // in 4 na klopi. Postava je poljubna, dokler ima natanko enega vratarja in
 // spoštuje spodnje in zgornje meje po pozicijah.
 
+import type { IgralecVKadru, IgralecZaPravila, Pozicija } from './tipi'
+
 export const VELIKOST_EKIPE = 15
 export const STEVILO_PRVIH = 11
 export const MAX_IZ_KLUBA = 3
 export const PRORACUN = 100.0
 export const KAPETAN_MNOZITELJ = 3
 
-export const POZICIJE = {
+interface PravilaPozicije {
+  naslov: string
+  kader: number
+  min: number
+  max: number
+  privzeto: number
+}
+
+export const POZICIJE: Record<Pozicija, PravilaPozicije> = {
   GK: { naslov: 'Vratarji', kader: 2, min: 1, max: 1, privzeto: 1 },
   DEF: { naslov: 'Branilci', kader: 5, min: 3, max: 5, privzeto: 4 },
   MID: { naslov: 'Vezisti', kader: 5, min: 2, max: 5, privzeto: 4 },
@@ -19,16 +29,19 @@ export const POZICIJE = {
 }
 
 /** Od zadnje do prve vrste igrišča — vrstni red uporabljamo povsod enako. */
-export const VRSTNI_RED = ['GK', 'DEF', 'MID', 'FWD']
+export const VRSTNI_RED: Pozicija[] = ['GK', 'DEF', 'MID', 'FWD']
 
 /** Prešteje igralce po pozicijah; igralci brez pozicije se ne štejejo. */
-export function poPozicijah(igralci) {
-  const n = { GK: 0, DEF: 0, MID: 0, FWD: 0 }
-  for (const i of igralci) if (n[i.position] != null) n[i.position]++
+export function poPozicijah(igralci: IgralecZaPravila[]): Record<Pozicija, number> {
+  const n: Record<Pozicija, number> = { GK: 0, DEF: 0, MID: 0, FWD: 0 }
+  for (const i of igralci) {
+    const p = i.position
+    if (p != null && n[p] != null) n[p]++
+  }
   return n
 }
 
-export function brezPozicije(igralci) {
+export function brezPozicije<T extends IgralecZaPravila>(igralci: T[]): T[] {
   return igralci.filter((i) => !i.position)
 }
 
@@ -36,7 +49,7 @@ export function brezPozicije(igralci) {
  * Ali lahko igralec te pozicije še stopi v prvo postavo? Poleg zgornje meje
  * preveri tudi, da za preostale pozicije ostane dovolj mest za njihov minimum.
  */
-export function lahkoZacne(pozicija, prvi) {
+export function lahkoZacne(pozicija: Pozicija, prvi: IgralecZaPravila[]): boolean {
   const n = poPozicijah(prvi)
   if (prvi.length >= STEVILO_PRVIH) return false
   if (n[pozicija] >= POZICIJE[pozicija].max) return false
@@ -54,7 +67,11 @@ export function lahkoZacne(pozicija, prvi) {
  * Isti razlogi so uporabljeni na trgu igralcev, da gumbi in opozorila povedo
  * isto zgodbo.
  */
-export function zakajNeGre(igralec, izbrani, preostalo) {
+export function zakajNeGre(
+  igralec: IgralecZaPravila,
+  izbrani: IgralecZaPravila[],
+  preostalo: number,
+): string | null {
   if (izbrani.length >= VELIKOST_EKIPE)
     return `Kader je poln (${VELIKOST_EKIPE} igralcev).`
 
@@ -79,8 +96,11 @@ export function zakajNeGre(igralec, izbrani, preostalo) {
 }
 
 /** Vrne seznam napak; prazen seznam pomeni veljavno ekipo. */
-export function preveriEkipo(izbrani, proracun = PRORACUN) {
-  const napake = []
+export function preveriEkipo(
+  izbrani: IgralecVKadru[],
+  proracun: number = PRORACUN,
+): string[] {
+  const napake: string[] = []
   const prvi = izbrani.filter((i) => i.is_starter)
 
   if (izbrani.length !== VELIKOST_EKIPE)
@@ -124,8 +144,11 @@ export function preveriEkipo(izbrani, proracun = PRORACUN) {
   if (prvi.filter((i) => i.is_vice).length !== 1)
     napake.push('Določi namestnika, ki prevzame trak, če kapetan ne igra.')
 
-  const poKlubih = {}
-  for (const i of izbrani) poKlubih[i.team_id] = (poKlubih[i.team_id] ?? 0) + 1
+  const poKlubih: Record<string, number> = {}
+  for (const i of izbrani) {
+    const kljuc = String(i.team_id)
+    poKlubih[kljuc] = (poKlubih[kljuc] ?? 0) + 1
+  }
   if (Object.values(poKlubih).some((n) => n > MAX_IZ_KLUBA))
     napake.push(`Iz istega kluba lahko izbereš največ ${MAX_IZ_KLUBA} igralce.`)
 

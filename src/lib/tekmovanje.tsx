@@ -4,12 +4,41 @@
 // `?t=mladinci`. Tako je vsaka stran deljiva s povezavo, meni pa ostane en
 // sam. Izbira se shrani v brskalnik, da je ob naslednjem obisku tam, kjer si
 // pustil; parameter v naslovu jo vedno povozi, ker je bolj določen.
-import { createContext, useContext, useEffect, useRef, useState } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import { useLocation, useSearchParams } from 'react-router-dom'
 import { supabase } from './supabase'
 
 export const PRIVZETO = 'clani'
 const KLJUC = 'slff-tekmovanje'
+
+/** Tekmovanje, kot ga bere vmesnik (podmnožica stolpcev `competitions`). */
+export interface Tekmovanje {
+  id: number
+  slug: string
+  name: string
+  short_name: string | null
+  prvi_fantasy_krog: number | null
+}
+
+/** Ukaz, ki ga vrne `uskladiTekmovanje` — kdo popravi koga. */
+export type UskladitevUkaz =
+  | { dejanje: 'nic' }
+  | { dejanje: 'prevzemi-naslov'; slug: string }
+  | { dejanje: 'zapisi-naslov'; param: string | null }
+
+export interface UskladitevVhod {
+  vNaslovu: string | null | undefined
+  zadnjiVNaslovu: string | null | undefined
+  slug: string
+  potSeJeSpremenila?: boolean
+}
 
 /**
  * Kdo ima prav, ko se razideta naslov in izbrana liga.
@@ -31,7 +60,7 @@ export function uskladiTekmovanje({
   zadnjiVNaslovu,
   slug,
   potSeJeSpremenila = false,
-}) {
+}: UskladitevVhod): UskladitevUkaz {
   if (vNaslovu !== zadnjiVNaslovu) {
     // 1. Navigacija je parameter izgubila — liga se zaradi klika na "Igralci"
     //    ne sme spremeniti.
@@ -48,7 +77,15 @@ export function uskladiTekmovanje({
   return { dejanje: 'zapisi-naslov', param: zeljen }
 }
 
-const Kontekst = createContext({
+interface KontekstVrednost {
+  slug: string
+  id: number | null
+  tekmovanje: Tekmovanje | null
+  tekmovanja: Tekmovanje[]
+  nastavi: (slug: string) => void
+}
+
+const Kontekst = createContext<KontekstVrednost>({
   slug: PRIVZETO,
   id: null,
   tekmovanje: null,
@@ -56,7 +93,7 @@ const Kontekst = createContext({
   nastavi: () => {},
 })
 
-function shranjeno() {
+function shranjeno(): string | null {
   try {
     return localStorage.getItem(KLJUC)
   } catch {
@@ -64,10 +101,10 @@ function shranjeno() {
   }
 }
 
-export function TekmovanjeProvider({ children }) {
+export function TekmovanjeProvider({ children }: { children: ReactNode }) {
   const [iskanje, setIskanje] = useSearchParams()
-  const [tekmovanja, setTekmovanja] = useState([])
-  const [slug, setSlug] = useState(
+  const [tekmovanja, setTekmovanja] = useState<Tekmovanje[]>([])
+  const [slug, setSlug] = useState<string>(
     () => iskanje.get('t') || shranjeno() || PRIVZETO,
   )
 
@@ -77,11 +114,11 @@ export function TekmovanjeProvider({ children }) {
       .select('id, slug, name, short_name, prvi_fantasy_krog')
       .eq('active', true)
       .order('sort_order')
-      .then(({ data }) => setTekmovanja(data ?? []))
+      .then(({ data }) => setTekmovanja((data as Tekmovanje[] | null) ?? []))
   }, [])
 
   const { pathname } = useLocation()
-  const zadnjiVNaslovu = useRef(iskanje.get('t'))
+  const zadnjiVNaslovu = useRef<string | null>(iskanje.get('t'))
   const zadnjaPot = useRef(pathname)
 
   useEffect(() => {
@@ -142,6 +179,6 @@ export function TekmovanjeProvider({ children }) {
  * `id` je null, dokler se seznam lig ne naloži — dokler je, naj strani ne
  * poizvedujejo, sicer bi za hip pokazale igralce obeh lig skupaj.
  */
-export function useTekmovanje() {
+export function useTekmovanje(): KontekstVrednost {
   return useContext(Kontekst)
 }
