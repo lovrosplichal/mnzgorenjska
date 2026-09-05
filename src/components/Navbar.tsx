@@ -14,6 +14,7 @@ const povezave: Povezava[] = [
   { pot: '/moja-ekipa', naslov: 'Moja ekipa' },
   { pot: '/glasovanje', naslov: 'Asistence' },
   { pot: '/pozicije', naslov: 'Pozicije' },
+  { pot: '/odsotnosti', naslov: 'Odsotnosti' },
   { pot: '/igralci', naslov: 'Igralci' },
   { pot: '/rezultati', naslov: 'Rezultati' },
   { pot: '/lestvica', naslov: 'Lestvica' },

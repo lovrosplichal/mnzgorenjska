@@ -16,6 +16,7 @@ import Pravno from './pages/Pravno'
 import MojaEkipa from './pages/MojaEkipa'
 import Glasovanje from './pages/Glasovanje'
 import Pozicije from './pages/Pozicije'
+import Odsotnosti from './pages/Odsotnosti'
 import Administracija from './pages/Administracija'
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
               <Route path="/moja-ekipa" element={<MojaEkipa />} />
               <Route path="/glasovanje" element={<Glasovanje />} />
               <Route path="/pozicije" element={<Pozicije />} />
+              <Route path="/odsotnosti" element={<Odsotnosti />} />
               <Route path="/igralci" element={<Igralci />} />
               <Route path="/igralec/:id" element={<Igralec />} />
               <Route path="/lestvica" element={<Lestvica />} />

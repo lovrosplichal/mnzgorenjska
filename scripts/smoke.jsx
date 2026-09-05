@@ -15,6 +15,7 @@ import Prijava from '../src/pages/Prijava'
 import MojaEkipa from '../src/pages/MojaEkipa'
 import Glasovanje from '../src/pages/Glasovanje'
 import Pozicije from '../src/pages/Pozicije'
+import Odsotnosti from '../src/pages/Odsotnosti'
 import Administracija from '../src/pages/Administracija'
 import {
   preveriEkipo,
@@ -38,6 +39,7 @@ const strani = [
   ['Navbar', Navbar, '/'],
   ['Domov', Domov, '/'],
   ['Moja ekipa', MojaEkipa, '/moja-ekipa'],
+  ['Odsotnosti', Odsotnosti, '/odsotnosti'],
   ['Asistence', Glasovanje, '/glasovanje'],
   ['Pozicije', Pozicije, '/pozicije'],
   ['Igralci', Igralci, '/igralci'],

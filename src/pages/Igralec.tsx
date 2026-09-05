@@ -11,6 +11,12 @@ import {
   formatirajCeno,
 } from '../lib/pomozno'
 import Grb from '../components/Grb'
+import {
+  VRSTE,
+  VrsticaPorocila,
+  type Porocilo,
+  type VrstaPorocila,
+} from '../components/Odsotnost'
 import { tockeZaNastop } from '../lib/tockovanje'
 import type { Pozicija, Postavka } from '../lib/tipi'
 
@@ -57,6 +63,11 @@ export default function Igralec() {
   const [mojGlas, setMojGlas] = useState<Pozicija | null>(null)
   const [sporocilo, setSporocilo] = useState<string | null>(null)
   const [napaka, setNapaka] = useState<string | null>(null)
+  // odsotnosti in poškodbe tega igralca
+  const [porocila, setPorocila] = useState<Porocilo[]>([])
+  const [vrstaPorocila, setVrstaPorocila] = useState<VrstaPorocila>('poskodba')
+  const [besediloPorocila, setBesediloPorocila] = useState('')
+  const [posiljamPorocilo, setPosiljamPorocilo] = useState(false)
   const [nalaganje, setNalaganje] = useState(true)
 
   useEffect(() => {
@@ -186,6 +197,65 @@ export default function Igralec() {
       preklican = true
     }
   }, [igralecId, session])
+
+  // Poročila o odsotnosti in poškodbah — ločena poizvedba, da počasnejši
+  // pogled ne zadržuje profila igralca.
+  useEffect(() => {
+    if (!igralecId) return
+    let preklican = false
+    supabase
+      .from('player_reports_view')
+      .select('*')
+      .eq('player_id', igralecId)
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data }) => {
+        if (!preklican) setPorocila((data ?? []) as Porocilo[])
+      })
+    return () => {
+      preklican = true
+    }
+  }, [igralecId])
+
+  async function objaviPorocilo(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    if (!session) return
+    const t = besediloPorocila.trim()
+    if (!t) return
+    setPosiljamPorocilo(true)
+    setNapaka(null)
+    const { data, error } = await supabase
+      .from('player_reports')
+      .insert({
+        player_id: igralecId,
+        user_id: session.user.id,
+        kind: vrstaPorocila,
+        content: t,
+      })
+      .select('id')
+      .single()
+    setPosiljamPorocilo(false)
+    if (error) return setNapaka(error.message)
+    if (data)
+      setPorocila((prej) => [
+        {
+          id: data.id,
+          player_id: igralecId,
+          user_id: session.user.id,
+          kind: vrstaPorocila,
+          content: t,
+          created_at: new Date().toISOString(),
+        },
+        ...prej,
+      ])
+    setBesediloPorocila('')
+  }
+
+  async function izbrisiPorocilo(id: number) {
+    const { error } = await supabase.from('player_reports').delete().eq('id', id)
+    if (error) return setNapaka(error.message)
+    setPorocila((prej) => prej.filter((p) => p.id !== id))
+  }
 
   async function glasuj(pozicija: Pozicija) {
     if (!session) return
@@ -372,6 +442,87 @@ export default function Igralec() {
           </ul>
         </section>
       )}
+
+      {/* odsotnosti in poškodbe — informativno, ne vpliva na sestavo ekipe */}
+      <section className="kartica p-3 sm:p-4">
+        <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wide text-slate-400">
+            Odsotnosti in poškodbe
+          </h2>
+          <Link to="/odsotnosti" className="text-xs text-gnl-300 hover:underline">
+            vsa poročila →
+          </Link>
+        </div>
+
+        {porocila.length === 0 ? (
+          <p className="py-2 text-sm text-slate-500">
+            Ni poročil. Če veš, da igralec manjka, povej spodaj.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {porocila.map((p) => (
+              <VrsticaPorocila
+                key={p.id}
+                porocilo={p}
+                naIzbris={
+                  session?.user?.id === p.user_id
+                    ? () => izbrisiPorocilo(p.id)
+                    : undefined
+                }
+              />
+            ))}
+          </ul>
+        )}
+
+        {session ? (
+          <form onSubmit={objaviPorocilo} className="mt-3 space-y-2">
+            <div className="flex flex-wrap gap-1.5">
+              {VRSTE.map((v) => (
+                <button
+                  key={v.kljuc}
+                  type="button"
+                  onClick={() => setVrstaPorocila(v.kljuc)}
+                  className={`znacka transition ${
+                    vrstaPorocila === v.kljuc
+                      ? 'bg-gnl-500 text-slate-950'
+                      : 'bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  {v.ikona} {v.oznaka}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input
+                value={besediloPorocila}
+                onChange={(e) => setBesediloPorocila(e.target.value)}
+                maxLength={500}
+                placeholder="Npr. poškodba kolena, tri tedne."
+                className="flex-1 rounded-xl border border-white/10 bg-slate-900 px-3 py-2 text-sm"
+              />
+              <button
+                type="submit"
+                disabled={posiljamPorocilo || !besediloPorocila.trim()}
+                className="gumb-glavni px-4 text-sm"
+              >
+                Objavi
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-600">
+              Informacija za druge — igralca ne odstrani s trga in ne vpliva na
+              točke.
+            </p>
+          </form>
+        ) : (
+          <p className="mt-3 text-xs text-slate-500">
+            Za objavo se{' '}
+            <Link to="/prijava" className="underline hover:text-gnl-300">
+              prijavi
+            </Link>
+            .
+          </p>
+        )}
+      </section>
 
       {/* zadnji krogi + razlaga točk */}
       {razlage.length > 0 && (
