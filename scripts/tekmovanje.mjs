@@ -14,16 +14,40 @@ export function slugTekmovanja(privzeto = 'clani') {
   return v && !v.startsWith('--') ? v : privzeto
 }
 
-/** Vrne vrstico iz `competitions` za dani slug; brez nje se ne da uvažati. */
+// Stolpci, ki obstajajo šele po migraciji 20260905090000 (države in viri).
+const NOVI = 'source, source_league_code, country_id'
+const STARI = 'id, slug, name, short_name, mnzg_liga, prvi_fantasy_krog, rok_pomak_ur'
+
+/**
+ * Vrne vrstico iz `competitions` za dani slug; brez nje se ne da uvažati.
+ *
+ * Kodo in migracije uveljavlja vsak svoja pot: koda gre v git in na Vercel,
+ * migracija pa jo mora nekdo pognati proti Supabase. Uvoz zato ne sme
+ * predpostavljati, da je oboje prišlo hkrati — če novih stolpcev še ni,
+ * PostgREST vrne 400 in nočni uvoz bi se ustavil. Zato poskusimo s polnim
+ * naborom in ob napaki pademo nazaj na starega.
+ */
 export async function tekmovanje(db, slug = slugTekmovanja()) {
-  const { data, error } = await db
+  let { data, error } = await db
     .from('competitions')
-    .select(
-      'id, slug, name, short_name, mnzg_liga, source, source_league_code, prvi_fantasy_krog, rok_pomak_ur, country_id',
-    )
+    .select(`${STARI}, ${NOVI}`)
     .eq('slug', slug)
     .maybeSingle()
-  if (error) throw new Error(`tekmovanja ni mogoče prebrati: ${error.message}`)
+
+  if (error) {
+    const staraShema = await db
+      .from('competitions')
+      .select(STARI)
+      .eq('slug', slug)
+      .maybeSingle()
+    if (staraShema.error)
+      throw new Error(`tekmovanja ni mogoče prebrati: ${error.message}`)
+    console.log(
+      '  opomba: baza še nima stolpcev za države in vire — uvoz teče po starem',
+    )
+    data = staraShema.data
+  }
+
   if (!data)
     throw new Error(
       `tekmovanje "${slug}" ne obstaja — na voljo sta "clani" in "mladinci"`,
