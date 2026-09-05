@@ -241,6 +241,35 @@ nikoli v git — v CI je shranjen med GitHub Secrets.
 Razvojni strežnik opozori, če je priklopljen na oddaljeno bazo, in
 `npm run testno-okolje` se proti nelokalnem URL-ju sploh ne zažene.
 
+## Objava (deploy)
+
+Objavo naredi CI (`.github/workflows/ci.yml`), ne Vercelova Git povezava.
+Ob vsakem pushu na `main`: preverjanje (tipi, build, izris) → objava →
+**potrditev, da produkcija res streže ta commit**.
+
+Zadnji korak ni odveč. 3. septembra 2026 se je Vercelova povezava z GitHubom
+podrla, ker se je repozitorij preimenoval (`lovrosplichal` →
+`Lovro-splichal-orhanizagi`); GitHub staro pot tiho preusmerja, Vercel pa ne.
+Deploy se je nehal dogajati, nikjer ni bilo napake in produkcija je dva dni
+stregla staro različico. Zato build v HTML zapiše
+`<meta name="slff-commit">`, CI pa po objavi preveri, da je v zraku res on.
+
+Za objavo potrebuje tri skrivnosti v **Settings → Secrets and variables →
+Actions**:
+
+| Skrivnost | Kje jo dobiš |
+|---|---|
+| `VERCEL_TOKEN` | vercel.com → Account Settings → Tokens → Create |
+| `VERCEL_ORG_ID` | Vercel projekt → Settings → General → Team/Account ID |
+| `VERCEL_PROJECT_ID` | Vercel projekt → Settings → General → Project ID |
+
+Brez njih se objava preskoči z opozorilom (CI ne pade zaradi tega), potrditev
+deploya pa vseeno pove, da je produkcija stara.
+
+Ker objavlja CI, naj bo Vercelova Git povezava **odklopljena** (Vercel projekt
+→ Settings → Git → Disconnect) — sicer se ob vsakem pushu zgradita dva
+deploya.
+
 ## Načrt razvoja (roadmap)
 
 - [x] Postavitev baze in avtentikacije

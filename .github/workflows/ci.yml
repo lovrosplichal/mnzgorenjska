@@ -45,20 +45,66 @@ jobs:
           VITE_SUPABASE_URL: https://primer.supabase.co
           VITE_SUPABASE_ANON_KEY: sb_publishable_ci_ni_pravi_kljuc
 
-  preveri-deploy:
-    name: Je nova različica res v zraku?
+  objavi:
+    name: Objava na Vercel
     needs: preveri
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
     steps:
-      # Vercel gradi sam, ko dobi push. Tu samo počakamo in preverimo, da je
-      # produkcija RES dobila ta commit.
-      #
-      # Zakaj sploh: 3. septembra se je povezava Vercel–GitHub podrla, ker se
-      # je repozitorij preimenoval. Deploy se preprosto ni več zgodil, nikjer
-      # ni bilo napake in produkcija je dva dni stregla staro različico.
-      # Tišina je bila videti enako kot uspeh. Odslej ne bo.
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      # Objava iz CI namesto prek Vercelove Git povezave. Ta povezava se je
+      # 3. septembra tiho podrla (repozitorij se je preimenoval, Vercel je
+      # obdržal staro pot) in dva dni ni nihče opazil, ker se deploy
+      # preprosto ni zgodil — nikjer ni bilo rdeče. Objava iz CI je vidna
+      # tu, poleg ostalih preverb, in se ne more tiho izgubiti.
+      - name: Ali so skrivnosti nastavljene?
+        id: skrivnosti
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::warning::Manjkajo VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID — objava preskočena."
+            echo "::warning::Dodaj jih v Settings -> Secrets and variables -> Actions."
+            echo "so=ne" >> "$GITHUB_OUTPUT"
+          else
+            echo "so=da" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Namesti Vercel CLI
+        if: steps.skrivnosti.outputs.so == 'da'
+        run: npm i -g vercel@latest
+
+      - name: Povleci nastavitve projekta
+        if: steps.skrivnosti.outputs.so == 'da'
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Zgradi
+        if: steps.skrivnosti.outputs.so == 'da'
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Objavi v produkcijo
+        if: steps.skrivnosti.outputs.so == 'da'
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+  preveri-deploy:
+    name: Je nova različica res v zraku?
+    needs: objavi
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Zadnja beseda ni "deploy je uspel", ampak "produkcija RES streže ta
+      # commit". Build v HTML zapiše `<meta name="slff-commit">`, tu ga samo
+      # preberemo. Tišina odslej ne more več izgledati kot uspeh.
       - name: Počakaj na deploy in preveri commit
         run: |
           PRICAKOVAN="${GITHUB_SHA}"
@@ -78,7 +124,7 @@ jobs:
           echo
           echo "NAPAKA: po 10 minutah produkcija še vedno ne streže $PRICAKOVAN."
           echo "Najverjetnejši vzroki:"
-          echo "  - Vercel ni povezan z repozitorijem (Settings -> Git)"
+          echo "  - manjkajo skrivnosti VERCEL_* (glej job 'Objava na Vercel')"
           echo "  - build na Vercelu je padel (glej Deployments)"
           echo "  - projekt je zaustavljen (Settings -> General)"
           exit 1
