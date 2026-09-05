@@ -13,7 +13,7 @@
     "db:stop": "supabase stop",
     "smoke": "vite-node scripts/smoke.jsx",
     "typecheck": "tsc --noEmit",
-    "tipi": "supabase gen types typescript --local > src/lib/baza.types.ts",
+    "tipi": "npx --yes supabase gen types typescript --local > /tmp/baza.types.ts && mv /tmp/baza.types.ts src/lib/baza.types.ts",
     "testno-okolje": "bash scripts/testno-okolje.sh"
   },
   "dependencies": {

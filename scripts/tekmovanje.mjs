@@ -1,9 +1,12 @@
 // Katero ligo uvažamo — člane ali mladince.
 //
 // Vse uvozne skripte sprejmejo `--tekmovanje mladinci`; brez njega delajo s
-// člansko ligo, tako kot so od nekdaj. Šifro lige na mnzgkranj.si hrani
-// `competitions.mnzg_liga`, zato je `--liga` potreben le za arhiv prejšnjih
-// sezon (npr. `--liga 1503` za mladince 2025/26).
+// člansko ligo, tako kot so od nekdaj. Šifro lige pri viru hrani
+// `competitions.source_league_code`, zato je `--liga` potreben le za arhiv
+// prejšnjih sezon (npr. `--liga 1503` za mladince 2025/26).
+//
+// Tekmovanje pove tudi, KDO je vir (`source`) — uvozne skripte naslovov ne
+// gradijo več same, ampak jih dobijo od vira v `scripts/viri/`.
 
 export function slugTekmovanja(privzeto = 'clani') {
   const i = process.argv.indexOf('--tekmovanje')
@@ -15,7 +18,9 @@ export function slugTekmovanja(privzeto = 'clani') {
 export async function tekmovanje(db, slug = slugTekmovanja()) {
   const { data, error } = await db
     .from('competitions')
-    .select('id, slug, name, short_name, mnzg_liga, prvi_fantasy_krog, rok_pomak_ur')
+    .select(
+      'id, slug, name, short_name, mnzg_liga, source, source_league_code, prvi_fantasy_krog, rok_pomak_ur, country_id',
+    )
     .eq('slug', slug)
     .maybeSingle()
   if (error) throw new Error(`tekmovanja ni mogoče prebrati: ${error.message}`)
@@ -25,3 +30,12 @@ export async function tekmovanje(db, slug = slugTekmovanja()) {
     )
   return data
 }
+
+/**
+ * Šifra lige pri viru.
+ *
+ * Med prehodom bere `source_league_code`, če ga ni, pa stari `mnzg_liga` —
+ * tako uvoz teče tudi proti bazi, kjer migracija še ni stekla.
+ */
+export const sifraLige = (tekmovanje, privzeto = null) =>
+  tekmovanje?.source_league_code ?? tekmovanje?.mnzg_liga ?? privzeto

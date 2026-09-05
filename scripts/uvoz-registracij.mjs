@@ -27,6 +27,7 @@ import {
   slugTekmovanja,
   tekmovanje as najdiTekmovanje,
 } from './tekmovanje.mjs'
+import { viraZa } from './viri/index.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
 const PREDPOMNILNIK = 'scripts/.predpomnilnik'
@@ -88,6 +89,12 @@ const arg = (ime, privzeto = null) => {
 const leto = arg('leto', String(new Date().getFullYear()))
 const pisi = process.argv.includes('--pisi')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
+
+// Tekmovanje razrešimo takoj: iz njega dobimo vir, ta pa naslove — potrebni
+// so že pri seznamu zapisnikov niže.
+const tekmovanje = await najdiTekmovanje(db, slugTekmovanja())
+const vir = viraZa(tekmovanje)
+console.log(`Tekmovanje: ${tekmovanje.name}`)
 
 const poenostavi = (ime) =>
   (ime ?? '')
@@ -172,7 +179,7 @@ async function prenesi(url, ime) {
 }
 
 // --- seznam zapisnikov -----------------------------------------------------
-const stran = await (await fetch(`${IZVOR}/index.cfm?akc=registracije`)).text()
+const stran = await (await fetch(vir.naslovRegistracij())).text()
 const dokumenti = [
   ...new Set(
     [...stran.matchAll(/href="(dokumenti\/[^"]*?-(\d{4})\.pdf)"/g)]
@@ -188,7 +195,7 @@ for (const dok of dokumenti) {
   let vrstice
   try {
     const buf = await prenesi(
-      `${IZVOR}/${encodeURI(dok)}`,
+      vir.naslovDokumenta(dok),
       dok.split('/').pop(),
     )
     vrstice = pdfVBesedilo(buf)
@@ -241,8 +248,6 @@ const naKlub = (uradno) => {
 // Zapisnik selekcije ne pove, zato prestavljamo v eni ligi naenkrat: če je
 // isti fant v bazi kot mladinec in kot član, sicer ne bi vedeli, katerega
 // od obeh zapisov popraviti.
-const tekmovanje = await najdiTekmovanje(db, slugTekmovanja())
-console.log(`Tekmovanje: ${tekmovanje.name}`)
 
 const { data: igralci } = await db
   .from('players')

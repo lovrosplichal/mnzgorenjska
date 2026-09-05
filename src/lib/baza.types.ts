@@ -324,6 +324,7 @@ export type Database = {
       competitions: {
         Row: {
           active: boolean
+          country_id: number
           id: number
           mnzg_liga: string | null
           name: string
@@ -332,9 +333,12 @@ export type Database = {
           short_name: string
           slug: string
           sort_order: number
+          source: string
+          source_league_code: string | null
         }
         Insert: {
           active?: boolean
+          country_id: number
           id?: never
           mnzg_liga?: string | null
           name: string
@@ -343,9 +347,12 @@ export type Database = {
           short_name: string
           slug: string
           sort_order?: number
+          source: string
+          source_league_code?: string | null
         }
         Update: {
           active?: boolean
+          country_id?: number
           id?: never
           mnzg_liga?: string | null
           name?: string
@@ -353,6 +360,40 @@ export type Database = {
           rok_pomak_ur?: number
           short_name?: string
           slug?: string
+          sort_order?: number
+          source?: string
+          source_league_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "competitions_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      countries: {
+        Row: {
+          active: boolean
+          code: string
+          id: number
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          active?: boolean
+          code: string
+          id?: never
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          active?: boolean
+          code?: string
+          id?: never
+          name?: string
           sort_order?: number
         }
         Relationships: []
@@ -394,6 +435,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_log_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
         ]
@@ -802,6 +850,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fantasy_teams_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
           {
@@ -1372,6 +1427,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "players_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "players_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
@@ -1758,6 +1820,13 @@ export type Database = {
             referencedRelation: "competitions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "rounds_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       settings: {
@@ -1777,24 +1846,35 @@ export type Database = {
       }
       teams: {
         Row: {
+          country_id: number
           id: number
           logo_url: string | null
           name: string
           short_name: string | null
         }
         Insert: {
+          country_id: number
           id?: never
           logo_url?: string | null
           name: string
           short_name?: string | null
         }
         Update: {
+          country_id?: number
           id?: never
           logo_url?: string | null
           name?: string
           short_name?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "teams_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
@@ -1980,6 +2060,40 @@ export type Database = {
             referencedRelation: "competitions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "players_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      competitions_view: {
+        Row: {
+          active: boolean | null
+          country_code: string | null
+          country_id: number | null
+          country_name: string | null
+          id: number | null
+          mnzg_liga: string | null
+          name: string | null
+          prvi_fantasy_krog: number | null
+          rok_pomak_ur: number | null
+          short_name: string | null
+          slug: string | null
+          sort_order: number | null
+          source: string | null
+          source_league_code: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "competitions_country_id_fkey"
+            columns: ["country_id"]
+            isOneToOne: false
+            referencedRelation: "countries"
+            referencedColumns: ["id"]
+          },
         ]
       }
       fantasy_round_points: {
@@ -1999,6 +2113,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fantasy_teams_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
         ]
@@ -2025,6 +2146,13 @@ export type Database = {
             referencedRelation: "competitions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fantasy_teams_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       fantasy_team_budget: {
@@ -2042,6 +2170,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fantasy_teams_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
         ]
@@ -2066,6 +2201,13 @@ export type Database = {
             referencedRelation: "competitions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "fantasy_teams_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       fantasy_team_wealth: {
@@ -2084,6 +2226,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fantasy_teams_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
         ]
@@ -2148,6 +2297,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rounds_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
         ]
@@ -2258,6 +2414,13 @@ export type Database = {
             referencedRelation: "competitions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "rounds_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       minute_kroga: {
@@ -2363,6 +2526,13 @@ export type Database = {
             referencedRelation: "competitions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "rounds_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       player_overview: {
@@ -2395,6 +2565,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "players_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
           {
@@ -2452,6 +2629,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "players_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
           {
@@ -2567,6 +2751,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "players_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
           {
@@ -2774,6 +2965,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "players_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "players_team_id_fkey"
             columns: ["team_id"]
             isOneToOne: false
@@ -2830,6 +3028,13 @@ export type Database = {
             referencedRelation: "competitions"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "rounds_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
+            referencedColumns: ["id"]
+          },
         ]
       }
       voter_position_accuracy: {
@@ -2862,6 +3067,13 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "competitions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rounds_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "competitions_view"
             referencedColumns: ["id"]
           },
         ]

@@ -14,7 +14,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { vBesedilo } from './zapisnik.mjs'
-import { tekmovanje as najdiTekmovanje } from './tekmovanje.mjs'
+import { tekmovanje as najdiTekmovanje, sifraLige } from './tekmovanje.mjs'
+import { viraZa } from './viri/index.mjs'
 import { kljucKluba, kratkoIme } from './klubi.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
@@ -58,7 +59,8 @@ const pisi = process.argv.includes('--pisi')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
 const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
-const liga = arg('liga', tekmovanje.mnzg_liga ?? '1601')
+const vir = viraZa(tekmovanje)
+const liga = arg('liga', sifraLige(tekmovanje, '1601'))
 console.log(`Tekmovanje: ${tekmovanje.name} (liga ${liga})`)
 
 async function prenesi(url, ime) {
@@ -89,7 +91,7 @@ function sezonaIz(datumIso) {
 }
 
 // --- razčlenitev razporeda --------------------------------------------------
-const url = `${IZVOR}/index.cfm?akc=tekmovanja&liga=${liga}&prikazi=razpored`
+const url = vir.naslovRazporeda(liga)
 console.log(`Berem razpored: ${url}`)
 const html = await prenesi(url, `razpored-${liga}.html`)
 
@@ -174,7 +176,14 @@ async function klubId(ime) {
   const polnoIme = ime.trim()
   const { data, error } = await db
     .from('teams')
-    .insert({ name: polnoIme, short_name: kratkoIme(polnoIme) })
+    // `country_id` je obvezen: ime kluba je unikatno znotraj drzave, ne
+    // globalno. Brez njega vstavljanje pade — in nov klub se pojavi ob
+    // vsakem novem zapisniku, ne le ob prvem uvozu.
+    .insert({
+      name: polnoIme,
+      short_name: kratkoIme(polnoIme),
+      country_id: tekmovanje.country_id,
+    })
     .select('id')
     .single()
   if (error) throw new Error(`klub ${polnoIme}: ${error.message}`)

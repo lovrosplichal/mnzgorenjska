@@ -15,7 +15,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { parsirajZapisnik, nastopi } from './zapisnik.mjs'
-import { tekmovanje as najdiTekmovanje } from './tekmovanje.mjs'
+import { tekmovanje as najdiTekmovanje, sifraLige } from './tekmovanje.mjs'
+import { viraZa } from './viri/index.mjs'
 import { kljucKluba, kratkoIme } from './klubi.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
@@ -62,7 +63,8 @@ const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
 const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
 // Brez `--liga` vzamemo tekočo sezono tekmovanja; arhiv se navede izrecno.
-const liga = arg('liga', tekmovanje.mnzg_liga ?? '1502')
+const vir = viraZa(tekmovanje)
+const liga = arg('liga', sifraLige(tekmovanje, '1502'))
 console.log(`Tekmovanje: ${tekmovanje.name} (liga ${liga})`)
 
 // --- prenos s predpomnilnikom ---------------------------------------------
@@ -94,7 +96,14 @@ async function klubId(ime) {
   const polnoIme = ime.trim()
   const { data, error } = await db
     .from('teams')
-    .insert({ name: polnoIme, short_name: kratkoIme(polnoIme) })
+    // `country_id` je obvezen: ime kluba je unikatno znotraj drzave, ne
+    // globalno. Brez njega vstavljanje pade — in nov klub se pojavi ob
+    // vsakem novem zapisniku, ne le ob prvem uvozu.
+    .insert({
+      name: polnoIme,
+      short_name: kratkoIme(polnoIme),
+      country_id: tekmovanje.country_id,
+    })
     .select('id')
     .single()
   if (error) throw new Error(`klub ${polnoIme}: ${error.message}`)
@@ -258,7 +267,7 @@ if (pocisti) {
 }
 
 // --- seznam zapisnikov ------------------------------------------------------
-const seznamUrl = `${IZVOR}/index.cfm?akc=tekmovanja&liga=${liga}`
+const seznamUrl = vir.naslovSeznamaTekem(liga)
 console.log(`Berem seznam tekem: ${seznamUrl}`)
 // Seznam se dnevno spreminja (nova tekma → nov zapisnik ID); vedno sveže,
 // da ne izpustimo pravkar objavljenih. Posamezne zapisnike lahko cachiramo.
@@ -273,7 +282,7 @@ let preskocenih = 0
 const vsaOpozorila = []
 
 for (const id of ids) {
-  const url = `${IZVOR}/index.cfm?akc=zapisnik&liga=${liga}&zapisnik=${id}`
+  const url = vir.naslovZapisnika(liga, id)
   let html
   try {
     html = await prenesi(url, `${id}.html`)

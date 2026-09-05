@@ -19,7 +19,8 @@
 import { createClient } from '@supabase/supabase-js'
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { vBesedilo } from './zapisnik.mjs'
-import { tekmovanje as najdiTekmovanje } from './tekmovanje.mjs'
+import { tekmovanje as najdiTekmovanje, sifraLige } from './tekmovanje.mjs'
+import { viraZa } from './viri/index.mjs'
 
 const IZVOR = 'https://www.mnzgkranj.si'
 const PREDPOMNILNIK = 'scripts/.predpomnilnik'
@@ -62,7 +63,8 @@ const pisi = process.argv.includes('--pisi')
 const db = createClient(BASE, SERVICE, { auth: { persistSession: false } })
 
 const tekmovanje = await najdiTekmovanje(db, arg('tekmovanje', 'clani'))
-const liga = arg('liga', tekmovanje.mnzg_liga ?? '1601')
+const vir = viraZa(tekmovanje)
+const liga = arg('liga', sifraLige(tekmovanje, '1601'))
 // Pomak je lastnost lige (mladinci igrajo zgodaj, zato krajsi), `--pomak` pa
 // ga za posamezen zagon se vedno povozi.
 const pomakUr = Number(arg('pomak', null) ?? tekmovanje.rok_pomak_ur ?? 6)
@@ -189,9 +191,7 @@ for (const k of krogi) {
   // igra več vloge; postava je posneta.
   if (k.played_on && new Date(k.played_on).getTime() < zdaj - 86400000) continue
 
-  const url =
-    `${IZVOR}/print.cfm?prikazi=delegiranje&liga=${liga}` +
-    `&krog=${k.number}&sodnik=1&delegat=1&klub=1&liga1=1`
+  const url = vir.naslovDelegiranja(liga, k.number)
   let html
   try {
     // Sveže — delegacije se pogosto spreminjajo (menjava ur, prestavitve).
