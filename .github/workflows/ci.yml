@@ -85,14 +85,16 @@ jobs:
 
       # Ce objava pade, naj bo takoj jasno KAJ od treh je narobe, ne da je
       # treba ugibati iz "Could not retrieve Project Settings".
-      - name: Preveri dostop
+      # `vercel whoami` NE sme ustaviti objave. Za ta racun vraca "User not
+      # found" tudi za zeton, ki morda dela — verjetno zato, ker je vezan na
+      # doloceno ekipo in whoami brez --scope uporabnika ne razresi. Diagnostika
+      # naj bo diagnostika; o uspehu odloci `vercel deploy`.
+      - name: Preveri dostop (samo diagnostika)
         if: steps.skrivnosti.outputs.so == 'da'
+        continue-on-error: true
         run: |
           echo "Kdo sem:"
-          vercel whoami --token="$VERCEL_TOKEN" || {
-            echo "::error::VERCEL_TOKEN ni veljaven ali je potekel."
-            exit 1
-          }
+          vercel whoami --token="$VERCEL_TOKEN" || echo "  (whoami ne razresi uporabnika — nadaljujem)"
           echo "ORG_ID se zacne z:     $(printf '%.7s' "$VERCEL_ORG_ID")…"
           echo "PROJECT_ID se zacne z: $(printf '%.7s' "$VERCEL_PROJECT_ID")…"
 
