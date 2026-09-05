@@ -1,0 +1,84 @@
+name: CI
+
+# Do zdaj se ob commitu ni preverjalo nič — ne tipi, ne build, ne izris.
+# Vsako preverjanje je teklo samo na razvijalčevem računalniku.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Nov push na isto vejo prekine prejšnji tek — zadnje stanje je edino, ki šteje.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preveri:
+    name: Tipi, build, izris
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      # `npm run build` že poganja `tsc --noEmit`, a ločen korak pove, KATERI
+      # od obeh je padel, brez brskanja po dnevniku.
+      - name: Tipi
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      # Smoke izriše vse strani na strežniku in preveri pravila točkovanja in
+      # sestave ekipe. Baze ne potrebuje: poizvedbe ob izrisu ne blokirajo,
+      # zato zadošča veljaven (a izmišljen) URL.
+      - name: Izris vseh strani + pravila
+        run: npm run smoke
+        env:
+          VITE_SUPABASE_URL: https://primer.supabase.co
+          VITE_SUPABASE_ANON_KEY: sb_publishable_ci_ni_pravi_kljuc
+
+  preveri-deploy:
+    name: Je nova različica res v zraku?
+    needs: preveri
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Vercel gradi sam, ko dobi push. Tu samo počakamo in preverimo, da je
+      # produkcija RES dobila ta commit.
+      #
+      # Zakaj sploh: 3. septembra se je povezava Vercel–GitHub podrla, ker se
+      # je repozitorij preimenoval. Deploy se preprosto ni več zgodil, nikjer
+      # ni bilo napake in produkcija je dva dni stregla staro različico.
+      # Tišina je bila videti enako kot uspeh. Odslej ne bo.
+      - name: Počakaj na deploy in preveri commit
+        run: |
+          PRICAKOVAN="${GITHUB_SHA}"
+          echo "Pričakujem commit: $PRICAKOVAN"
+          for i in $(seq 1 30); do
+            NAJDEN=$(curl -sS -m 20 -H 'Cache-Control: no-cache' \
+              "https://slff.eu/?ci=$(date +%s)" \
+              | grep -o 'name="slff-commit" content="[a-f0-9]*"' \
+              | grep -o '[a-f0-9]\{40\}' || true)
+            if [ "$NAJDEN" = "$PRICAKOVAN" ]; then
+              echo "OK — produkcija streže $NAJDEN"
+              exit 0
+            fi
+            echo "  poskus $i/30: v zraku je ${NAJDEN:-<brez znamke>}"
+            sleep 20
+          done
+          echo
+          echo "NAPAKA: po 10 minutah produkcija še vedno ne streže $PRICAKOVAN."
+          echo "Najverjetnejši vzroki:"
+          echo "  - Vercel ni povezan z repozitorijem (Settings -> Git)"
+          echo "  - build na Vercelu je padel (glej Deployments)"
+          echo "  - projekt je zaustavljen (Settings -> General)"
+          exit 1
