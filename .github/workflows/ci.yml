@@ -83,17 +83,31 @@ jobs:
         if: steps.skrivnosti.outputs.so == 'da'
         run: npm i -g vercel@latest
 
-      - name: Povleci nastavitve projekta
+      # Ce objava pade, naj bo takoj jasno KAJ od treh je narobe, ne da je
+      # treba ugibati iz "Could not retrieve Project Settings".
+      - name: Preveri dostop
         if: steps.skrivnosti.outputs.so == 'da'
-        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+        run: |
+          echo "Kdo sem:"
+          vercel whoami --token="$VERCEL_TOKEN" || {
+            echo "::error::VERCEL_TOKEN ni veljaven ali je potekel."
+            exit 1
+          }
+          echo "ORG_ID se zacne z:     $(printf '%.7s' "$VERCEL_ORG_ID")…"
+          echo "PROJECT_ID se zacne z: $(printf '%.7s' "$VERCEL_PROJECT_ID")…"
 
-      - name: Zgradi
-        if: steps.skrivnosti.outputs.so == 'da'
-        run: vercel build --prod --token="$VERCEL_TOKEN"
-
+      # Brez `vercel pull` in `vercel build`: tista dva potrebujeta lokalno
+      # povezan projekt (`.vercel/`) in padeta, ce se ORG/PROJECT ID ne
+      # ujemata. `vercel deploy` sam naloži izvorno kodo in jo zgradi na
+      # Vercelu — manj gibljivih delov, isti izid.
       - name: Objavi v produkcijo
         if: steps.skrivnosti.outputs.so == 'da'
-        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        run: |
+          vercel deploy --prod --yes --token="$VERCEL_TOKEN" || {
+            echo "::error::Objava ni uspela. Najverjetneje se VERCEL_ORG_ID ali"
+            echo "::error::VERCEL_PROJECT_ID ne ujema s projektom (Settings -> General)."
+            exit 1
+          }
 
   preveri-deploy:
     name: Je nova različica res v zraku?
